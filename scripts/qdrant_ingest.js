@@ -15,6 +15,9 @@ const ai = new GoogleGenAI({
 });
 
 const BATCH_SIZE = 32; // Smaller batches for stability
+const EMBED_MIN_INTERVAL_MS = Number(process.env.EMBED_MIN_INTERVAL_MS || 700);
+const EMBED_MAX_RETRIES = Number(process.env.EMBED_MAX_RETRIES || 8);
+let lastEmbedAt = 0;
 
 const client = new QdrantClient({
   url: QDRANT_URL,
@@ -117,13 +120,67 @@ async function upsertWithRetry(collection, points, retries = 5) {
   }
 }
 
-async function embedOne(text) {
-  const response = await ai.models.embedContent({
-    model: "gemini-embedding-001",
-    contents: text,
-  });
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  return response.embeddings[0].values;
+function parseRetryDelayMs(rawText) {
+  if (!rawText) return null;
+
+  // e.g. "Please retry in 12.592833013s."
+  const retryInMatch = rawText.match(/retry\s+in\s+([0-9.]+)s/i);
+  if (retryInMatch) {
+    return Math.ceil(Number(retryInMatch[1]) * 1000);
+  }
+
+  // e.g. "\"retryDelay\":\"12s\""
+  const retryDelayMatch = rawText.match(/"retryDelay"\s*:\s*"([0-9.]+)s"/i);
+  if (retryDelayMatch) {
+    return Math.ceil(Number(retryDelayMatch[1]) * 1000);
+  }
+
+  return null;
+}
+
+function isRateLimitError(err) {
+  const status = err?.status || err?.cause?.status;
+  const msg = String(err?.message || "");
+  return status === 429 || /RESOURCE_EXHAUSTED|quota|rate\-?limit/i.test(msg);
+}
+
+async function embedOne(text, retries = EMBED_MAX_RETRIES) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const now = Date.now();
+      const timeSinceLast = now - lastEmbedAt;
+      const waitMs = EMBED_MIN_INTERVAL_MS - timeSinceLast;
+      if (waitMs > 0) {
+        await sleep(waitMs);
+      }
+
+      const response = await ai.models.embedContent({
+        model: "gemini-embedding-001",
+        contents: text,
+      });
+
+      lastEmbedAt = Date.now();
+      return response.embeddings[0].values;
+    } catch (err) {
+      if (!isRateLimitError(err) || attempt === retries) {
+        throw err;
+      }
+
+      const retryDelayMs = parseRetryDelayMs(String(err?.message || ""));
+      const fallbackDelayMs = 5000 + attempt * 2000;
+      const delayMs = Math.max(retryDelayMs || 0, fallbackDelayMs);
+
+      console.log(
+        `⚠️ Embed rate limit hit (attempt ${attempt}/${retries}). Waiting ${Math.ceil(delayMs / 1000)}s before retry...`
+      );
+
+      await sleep(delayMs);
+    }
+  }
 }
 
 async function ensureCollection(collectionName, vectorSize) {

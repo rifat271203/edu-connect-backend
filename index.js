@@ -11,7 +11,7 @@ const { registerDMMessaging } = require('./sockets/dmMessaging')
 const app = express()
 const server = http.createServer(app)
 
-const frontendOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:3000')
+const frontendOrigins = (process.env.FRONTEND_ORIGIN || 'https://edu-connect-frontend-three.vercel.app')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean)
