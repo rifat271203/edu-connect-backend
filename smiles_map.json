@@ -1,0 +1,117 @@
+{
+  "benzene": {
+    "smiles": "c1ccccc1",
+    "aliases": ["benzene", "c6h6", "বেনজিন"],
+    "default_role": "reactant"
+  },
+  "ozone": {
+    "smiles": "O=[O+][O-]",
+    "aliases": ["ozone", "o3", "ওজোন"],
+    "default_role": "reagent"
+  },
+  "glyoxal": {
+    "smiles": "O=CC=O",
+    "aliases": ["glyoxal", "ethanedial", "গ্লাইঅক্সাল"],
+    "default_role": "product"
+  },
+  "benzoic acid": {
+    "smiles": "O=C(O)c1ccccc1",
+    "aliases": ["benzoic acid", "c6h5cooh", "বেনজোয়িক এসিড", "benzenecarboxylic acid"],
+    "default_role": "product"
+  },
+  "ethanol": {
+    "smiles": "CCO",
+    "aliases": ["ethanol", "ethyl alcohol", "c2h5oh", "c2h6o", "ইথানল"],
+    "default_role": "reactant"
+  },
+  "ethene": {
+    "smiles": "C=C",
+    "aliases": ["ethene", "ethylene", "c2h4", "ইথিন"],
+    "default_role": "reactant"
+  },
+  "propene": {
+    "smiles": "CC=C",
+    "aliases": ["propene", "propylene", "c3h6", "প্রোপিন"],
+    "default_role": "reactant"
+  },
+  "acetone": {
+    "smiles": "CC(=O)C",
+    "aliases": ["acetone", "propanone", "প্রোপানন"],
+    "default_role": "product"
+  },
+  "ethanal": {
+    "smiles": "CC=O",
+    "aliases": ["ethanal", "acetaldehyde", "ch3cho", "ইথানাল"],
+    "default_role": "product"
+  },
+  "phenol": {
+    "smiles": "Oc1ccccc1",
+    "aliases": ["phenol", "c6h5oh", "ফেনল"],
+    "default_role": "reactant"
+  },
+  "aniline": {
+    "smiles": "Nc1ccccc1",
+    "aliases": ["aniline", "c6h5nh2", "অ্যানিলিন"],
+    "default_role": "reactant"
+  },
+  "nitrobenzene": {
+    "smiles": "O=[N+]([O-])c1ccccc1",
+    "aliases": ["nitrobenzene", "c6h5no2", "নাইট্রোবেঞ্জিন"],
+    "default_role": "product"
+  },
+  "toluene": {
+    "smiles": "Cc1ccccc1",
+    "aliases": ["toluene", "methylbenzene", "c6h5ch3", "টলুইন"],
+    "default_role": "reactant"
+  },
+  "formaldehyde": {
+    "smiles": "C=O",
+    "aliases": ["formaldehyde", "methanal", "hcho", "ch2o", "ফরমালডিহাইড"],
+    "default_role": "product"
+  },
+  "acetic acid": {
+    "smiles": "CC(=O)O",
+    "aliases": ["acetic acid", "ethanoic acid", "ch3cooh", "অ্যাসিটিক এসিড"],
+    "default_role": "product"
+  },
+  "hydrogen": {
+    "smiles": "[H][H]",
+    "aliases": ["hydrogen", "h2", "হাইড্রোজেন"],
+    "default_role": "reagent"
+  },
+  "water": {
+    "smiles": "O",
+    "aliases": ["water", "h2o", "পানি", "জল"],
+    "default_role": "reagent"
+  },
+  "sulfuric acid": {
+    "smiles": "O=S(=O)(O)O",
+    "aliases": ["sulfuric acid", "h2so4", "sulphuric acid", "সালফিউরিক এসিড"],
+    "default_role": "reagent"
+  },
+  "nitric acid": {
+    "smiles": "O=[N+]([O-])O",
+    "aliases": ["nitric acid", "hno3", "নাইট্রিক এসিড"],
+    "default_role": "reagent"
+  },
+  "potassium permanganate": {
+    "smiles": "[K+].[O-][Mn](=O)(=O)=O",
+    "aliases": ["potassium permanganate", "kmno4", "পটাসিয়াম পারম্যাঙ্গানেট"],
+    "default_role": "reagent"
+  },
+  "potassium dichromate": {
+    "smiles": "[K+].[K+].[O-][Cr](=O)(=O)O[Cr](=O)(=O)[O-]",
+    "aliases": ["potassium dichromate", "k2cr2o7", "পটাসিয়াম ডাইক্রোমেট"],
+    "default_role": "reagent"
+  },
+  "sodium borohydride": {
+    "smiles": "[Na+].[BH4-]",
+    "aliases": ["sodium borohydride", "nabh4", "সোডিয়াম বোরোহাইড্রাইড"],
+    "default_role": "reagent"
+  },
+  "lithium aluminium hydride": {
+    "smiles": "[Li+].[AlH4-]",
+    "aliases": ["lithium aluminium hydride", "lialh4", "লিথিয়াম অ্যালুমিনিয়াম হাইড্রাইড"],
+    "default_role": "reagent"
+  }
+}

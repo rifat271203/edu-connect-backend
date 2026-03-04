@@ -1,0 +1,24 @@
+[
+  {
+    "collection": "hsc_chem_2nd_paper",
+    "jsonl": "chemistry.jsonl",
+    "subject": "chemistry",
+    "category": "chemistry",
+    "book": "HSC Chemistry 2nd Paper"
+  },
+  {
+    "collection": "hsc_physics",
+    "jsonl": "physics.jsonl",
+    "subject": "physics",
+    "category": "physics",
+    "book": "HSC Physics 1st Paper"
+  },
+  {
+    "collection": "hsc_math",
+    "jsonl": "math.jsonl",
+    "subject": "math",
+    "category": "math",
+    "book": "HSC Higher Math 1st Paper"
+  }
+]
+
