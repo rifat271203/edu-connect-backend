@@ -1,5 +1,6 @@
 require("dotenv").config();
 const express = require("express");
+const { GoogleGenAI } = require("@google/genai");
 const { QdrantClient } = require("@qdrant/js-client-rest");
 const { detectQuestionType } = require("../utils/organicDetector");
 const { handleChemistryQuestion, getChemistryMaps } = require("./aiChemistry");
@@ -8,6 +9,9 @@ const { handlePhysicsQuestion } = require("./aiPhysics");
 const { smilesMap, aliasToCanonical, smilesToCanonical } = getChemistryMaps();
 
 const router = express.Router();
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
 
 const qdrant = new QdrantClient({
   url: process.env.QDRANT_URL,
@@ -1034,16 +1038,12 @@ async function callLlmWithProviderFallback(input) {
 }
 
 async function embedOne(text) {
-  const r = await fetch("http://127.0.0.1:11434/api/embeddings", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: process.env.OLLAMA_EMBED_MODEL || "nomic-embed-text",
-      prompt: text,
-    }),
+  const response = await ai.models.embedContent({
+    model: "gemini-embedding-001",
+    contents: text,
   });
-  const data = await r.json();
-  return data.embedding;
+
+  return response.embeddings[0].values;
 }
 
 async function getContext(question, subject, category) {

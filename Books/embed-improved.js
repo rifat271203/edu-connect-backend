@@ -96,7 +96,7 @@ async function main() {
       console.log(`Creating collection: ${COLLECTION_NAME}`);
       await qdrant.createCollection(COLLECTION_NAME, {
         vectors: {
-          size: 768, // nomic-embed-text dimension
+          size: 3072, // nomic-embed-text dimension
           distance: "Cosine",
         },
       });

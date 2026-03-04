@@ -161,7 +161,7 @@ async function recreateCollection() {
   console.log("Recreating collection...");
 
   const vectorsConfig = {
-    size: 768, // nomic-embed-text dimension
+    size: 3072, // nomic-embed-text dimension
     distance: "Cosine",
   };
 
