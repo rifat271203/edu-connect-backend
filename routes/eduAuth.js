@@ -6,16 +6,54 @@ const { runQuery, ensureEduSchema } = require('../utils/eduSchema');
 
 const router = express.Router();
 
+function safeErrorResponse(res, status, message, error, context = {}) {
+  console.error('EDU AUTH ERROR:', {
+    ...context,
+    status,
+    message,
+    errorMessage: error?.message,
+    code: error?.code,
+    errno: error?.errno,
+  });
+  return res.status(status).json({ message });
+}
+
+function wrapAsync(routeName, handler) {
+  return async (req, res, next) => {
+    try {
+      await handler(req, res, next);
+    } catch (error) {
+      console.error('UNHANDLED EDU AUTH ROUTE ERROR:', {
+        routeName,
+        method: req.method,
+        path: req.originalUrl,
+        userId: req.user?.id || null,
+        message: error.message,
+        stack: error.stack,
+      });
+      next(error);
+    }
+  };
+}
+
 router.use(async (req, res, next) => {
   try {
     await ensureEduSchema();
     next();
   } catch (error) {
-    res.status(500).json({ message: 'Failed to initialize edu schema', error: error.message });
+    safeErrorResponse(res, 500, 'Failed to initialize edu schema', error, {
+      routeName: 'router.use.ensureEduSchema',
+      method: req.method,
+      path: req.originalUrl,
+    });
   }
 });
 
 function signEduToken(user) {
+  if (!user || !user.id || !user.email) {
+    throw new Error('Cannot sign token for invalid user payload');
+  }
+
   return jwt.sign(
     {
       id: user.id,
@@ -55,6 +93,10 @@ async function registerByRole(req, res, role) {
     );
 
     const user = userRows[0];
+    if (!user) {
+      return res.status(500).json({ message: 'User was created but could not be loaded' });
+    }
+
     const token = signEduToken(user);
 
     return res.status(201).json({
@@ -63,7 +105,11 @@ async function registerByRole(req, res, role) {
       user,
     });
   } catch (error) {
-    return res.status(500).json({ message: 'Registration failed', error: error.message });
+    return safeErrorResponse(res, 500, 'Registration failed', error, {
+      routeName: 'registerByRole',
+      role,
+      email,
+    });
   }
 }
 
@@ -83,7 +129,7 @@ async function loginByRole(req, res, role) {
     const user = users[0];
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
-      return res.status(400).json({ message: 'Incorrect password' });
+      return res.status(401).json({ message: 'Incorrect password' });
     }
 
     const token = signEduToken(user);
@@ -102,17 +148,25 @@ async function loginByRole(req, res, role) {
       },
     });
   } catch (error) {
-    return res.status(500).json({ message: 'Login failed', error: error.message });
+    return safeErrorResponse(res, 500, 'Login failed', error, {
+      routeName: 'loginByRole',
+      role,
+      email,
+    });
   }
 }
 
-router.post('/teachers/register', async (req, res) => registerByRole(req, res, 'teacher'));
-router.post('/students/register', async (req, res) => registerByRole(req, res, 'student'));
+router.post('/teachers/register', wrapAsync('POST /teachers/register', async (req, res) => registerByRole(req, res, 'teacher')));
+router.post('/students/register', wrapAsync('POST /students/register', async (req, res) => registerByRole(req, res, 'student')));
 
-router.post('/teachers/login', async (req, res) => loginByRole(req, res, 'teacher'));
-router.post('/students/login', async (req, res) => loginByRole(req, res, 'student'));
+router.post('/teachers/login', wrapAsync('POST /teachers/login', async (req, res) => loginByRole(req, res, 'teacher')));
+router.post('/students/login', wrapAsync('POST /students/login', async (req, res) => loginByRole(req, res, 'student')));
 
-router.get('/me', eduAuthMiddleware, async (req, res) => {
+router.get('/me', eduAuthMiddleware, wrapAsync('GET /me', async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ message: 'Unauthorized user context' });
+  }
+
   try {
     const users = await runQuery(
       'SELECT id, name, email, role, department, institution, profile_pic_url, created_at FROM edu_users WHERE id = ?',
@@ -125,9 +179,12 @@ router.get('/me', eduAuthMiddleware, async (req, res) => {
 
     return res.json({ user: users[0] });
   } catch (error) {
-    return res.status(500).json({ message: 'Failed to fetch profile', error: error.message });
+    return safeErrorResponse(res, 500, 'Failed to fetch profile', error, {
+      routeName: 'GET /me',
+      userId: req.user?.id || null,
+    });
   }
-});
+}));
 
 module.exports = router;
 

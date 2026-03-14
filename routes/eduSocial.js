@@ -7,6 +7,24 @@ const { runQuery, ensureEduSchema } = require('../utils/eduSchema');
 
 const router = express.Router();
 
+function logSocialError(routeName, req, error) {
+  console.error('EDU SOCIAL ERROR:', {
+    routeName,
+    method: req.method,
+    path: req.originalUrl,
+    userId: req.user?.id || null,
+    message: error?.message,
+    code: error?.code,
+    errno: error?.errno,
+    stack: error?.stack,
+  });
+}
+
+function handleSocialServerError(routeName, req, res, error, message) {
+  logSocialError(routeName, req, error);
+  return res.status(500).json({ message });
+}
+
 router.use(async (req, res, next) => {
   try {
     await ensureEduSchema();
@@ -17,6 +35,14 @@ router.use(async (req, res, next) => {
 });
 
 router.use(eduAuthMiddleware);
+
+router.use((req, res, next) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ message: 'Unauthorized user context' });
+  }
+
+  return next();
+});
 
 function orderedPair(a, b) {
   return a < b ? [a, b] : [b, a];
@@ -421,7 +447,7 @@ router.get('/posts', async (req, res) => {
 
     return res.json({ posts, limit, offset });
   } catch (error) {
-    return res.status(500).json({ message: 'Failed to load posts', error: error.message });
+    return handleSocialServerError('GET /posts', req, res, error, 'Failed to load posts');
   }
 });
 
@@ -796,7 +822,7 @@ router.get('/friend-requests', async (req, res) => {
 
     return res.json({ incoming, outgoing });
   } catch (error) {
-    return res.status(500).json({ message: 'Failed to fetch friend requests', error: error.message });
+    return handleSocialServerError('GET /friend-requests', req, res, error, 'Failed to fetch friend requests');
   }
 });
 
@@ -1200,7 +1226,7 @@ router.get('/notifications', async (req, res) => {
 
     return res.json({ notifications, limit, offset });
   } catch (error) {
-    return res.status(500).json({ message: 'Failed to fetch notifications', error: error.message });
+    return handleSocialServerError('GET /notifications', req, res, error, 'Failed to fetch notifications');
   }
 });
 
@@ -1211,9 +1237,9 @@ router.get('/notifications/unread-count', async (req, res) => {
       [req.user.id]
     );
 
-    return res.json({ unreadCount: rows[0].unreadCount });
+    return res.json({ unreadCount: Number(rows?.[0]?.unreadCount || 0) });
   } catch (error) {
-    return res.status(500).json({ message: 'Failed to fetch unread count', error: error.message });
+    return handleSocialServerError('GET /notifications/unread-count', req, res, error, 'Failed to fetch unread count');
   }
 });
 

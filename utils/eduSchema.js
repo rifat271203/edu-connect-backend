@@ -2,8 +2,22 @@ const db = require('../db');
 
 function runQuery(sql, params = []) {
   return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+
     db.query(sql, params, (err, results) => {
-      if (err) return reject(err);
+      if (err) {
+        console.error('DB QUERY ERROR:', {
+          code: err.code,
+          errno: err.errno,
+          sqlState: err.sqlState,
+          message: err.message,
+          durationMs: Date.now() - startedAt,
+          sqlPreview: String(sql).replace(/\s+/g, ' ').trim().slice(0, 180),
+          paramCount: Array.isArray(params) ? params.length : 0,
+        });
+        return reject(err);
+      }
+
       resolve(results);
     });
   });

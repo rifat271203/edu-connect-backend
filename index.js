@@ -8,10 +8,18 @@ const { Server } = require('socket.io')
 const { registerMeetingSignaling } = require('./sockets/meetingSignaling')
 const { registerDMMessaging } = require('./sockets/dmMessaging')
 
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED REJECTION:', reason);
+});
+
 const app = express()
 const server = http.createServer(app)
 
-const frontendOrigins = (process.env.FRONTEND_ORIGIN || 'https://edu-connect-frontend-three.vercel.app')
+const frontendOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:3000')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean)
@@ -45,19 +53,28 @@ app.get('/', (req, res) => {
   res.send('Backend running 🚀')
 })
 
-const PORT = process.env.PORT || 3001
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-})
+app.get('/ping', (req, res) => {
+  res.status(200).json({ ok: true, message: 'server alive' });
+});
 
+app.get('/db-test', async (req, res) => {
+  try {
+    const result = await db.query('SELECT 1');
+    res.json({ ok: true, result });
+  } catch (err) {
+    console.error('DB TEST ERROR:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
-app.get('/test-db', (req, res) => {
-  db.query('SELECT 1 + 1 AS result', (err, results) => {
-    if (err) {
-      return res.status(500).json(err);
-    }
-    res.json(results);
-  });
+// legacy health alias
+app.get('/test-db', async (req, res) => {
+  try {
+    const result = await db.query('SELECT 1 + 1 AS result');
+    res.json(result);
+  } catch (err) {
+    res.status(500).json(err);
+  }
 });
 
 const bcrypt = require('bcryptjs');
@@ -73,18 +90,22 @@ app.post('/api/register', async (req, res) => {
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    const existing = await db.query('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
+    if (existing.length) {
+      return res.status(409).json({ message: 'Email already exists' });
+    }
+
     const sql = "INSERT INTO users (name, email, password) VALUES (?, ?, ?)";
 
-    db.query(sql, [name, email, hashedPassword], (err, result) => {
-      if (err) {
-        return res.status(500).json(err);
-      }
-
-      res.json({ message: "User registered successfully" });
-    });
-
+    await db.query(sql, [name, email, hashedPassword]);
+    res.json({ message: "User registered successfully" });
   } catch (error) {
-    res.status(500).json(error);
+    console.error('REGISTER ERROR:', {
+      message: error.message,
+      code: error.code,
+      errno: error.errno,
+    });
+    res.status(500).json({ message: 'Registration failed', error: error.message });
   }
 });
 
@@ -97,34 +118,37 @@ app.post('/api/login', async (req, res) => {
 
   try {
     const sql = "SELECT * FROM users WHERE email = ?";
-    
-    db.query(sql, [email], async (err, results) => {
-      if (err) {
-        return res.status(500).json(err);
-      }
+    const results = await db.query(sql, [email]);
 
-      if (results.length === 0) {
-        return res.status(400).json({ message: "User not found" });
-      }
+    if (results.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-      const user = results[0];
-      const match = await bcrypt.compare(password, user.password);
-      
-      if (!match) {
-        return res.status(400).json({ message: "Incorrect password" });
-      }
+    const user = results[0];
+    if (!user.password) {
+      return res.status(500).json({ message: 'User password hash is missing' });
+    }
 
-      const token = jwt.sign(
-        { id: user.id, name: user.name, email: user.email },
-        process.env.JWT_SECRET || 'default_secret_key',
-        { expiresIn: '1h' }
-      );
+    const match = await bcrypt.compare(password, user.password);
 
-      res.json({ message: "Login successful", token, name: user.name });
-    });
+    if (!match) {
+      return res.status(401).json({ message: "Incorrect password" });
+    }
 
+    const token = jwt.sign(
+      { id: user.id, name: user.name, email: user.email },
+      process.env.JWT_SECRET || 'default_secret_key',
+      { expiresIn: '1h' }
+    );
+
+    res.json({ message: "Login successful", token, name: user.name });
   } catch (error) {
-    res.status(500).json(error);
+    console.error('LOGIN ERROR:', {
+      message: error.message,
+      code: error.code,
+      errno: error.errno,
+    });
+    res.status(500).json({ message: 'Login failed', error: error.message });
   }
 });
 
@@ -161,3 +185,27 @@ app.post('/api/chat', async (req, res) => {
     res.status(500).json({ error: 'Failed to get response from AI' });
   }
 });
+
+app.use((err, req, res, next) => {
+  console.error('UNHANDLED EXPRESS ERROR:', {
+    method: req.method,
+    path: req.originalUrl,
+    userId: req.user?.id || null,
+    message: err?.message,
+    code: err?.code,
+    stack: err?.stack,
+  });
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  return res.status(err?.status || 500).json({
+    message: err?.status ? err.message : 'Internal server error',
+  });
+});
+
+const PORT = process.env.PORT || 3001
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`)
+})
