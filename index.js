@@ -48,6 +48,7 @@ app.use('/api/ai', require('./routes/ai'));
 app.use('/api/auth', require('./routes/eduAuth'));
 app.use('/api/social', require('./routes/eduSocial'));
 app.use('/api/meetings', require('./routes/meetings'));
+app.use('/api/classroom', require('./src/modules/eduConnectClassroom'));
 
 app.get('/', (req, res) => {
   res.send('Backend running 🚀')
