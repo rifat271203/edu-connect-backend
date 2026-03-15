@@ -50,6 +50,8 @@ router.patch(
   controller.archiveCourse
 );
 
+//here is the new version of activate endpoint without the redundant requireAnyRole('teacher') since requireCourseManagementRole already checks for teacher/assistant role
+
 router.patch(
   '/courses/:courseId/activate',
   requireAuth,
