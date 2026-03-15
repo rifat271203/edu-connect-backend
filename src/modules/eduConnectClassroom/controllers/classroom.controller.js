@@ -153,11 +153,12 @@ async function activateCourse(req, res) {
 async function submitEnrollmentRequest(req, res) {
   try {
     const courseId = Number(req.params.courseId);
+    const payload = req.body || {};
 
     const request = await service.submitEnrollmentRequest({
       courseId,
       studentId: req.user.id,
-      note: req.body.note,
+      note: payload.note,
     });
 
     await service.createSingleNotification({
@@ -202,13 +203,14 @@ async function approveEnrollmentRequest(req, res) {
   try {
     const courseId = Number(req.params.courseId);
     const requestId = Number(req.params.requestId);
+    const payload = req.body || {};
 
     const result = await service.reviewEnrollmentRequest({
       courseId,
       requestId,
       reviewerId: req.user.id,
       action: 'approve',
-      reviewNote: req.body.reviewNote,
+      reviewNote: payload.reviewNote,
     });
 
     await service.createSingleNotification({
@@ -234,13 +236,14 @@ async function rejectEnrollmentRequest(req, res) {
   try {
     const courseId = Number(req.params.courseId);
     const requestId = Number(req.params.requestId);
+    const payload = req.body || {};
 
     const result = await service.reviewEnrollmentRequest({
       courseId,
       requestId,
       reviewerId: req.user.id,
       action: 'reject',
-      reviewNote: req.body.reviewNote,
+      reviewNote: payload.reviewNote,
     });
 
     await service.createSingleNotification({
