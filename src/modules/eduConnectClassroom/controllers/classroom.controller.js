@@ -39,6 +39,7 @@ async function createCourse(req, res) {
       title: req.body.title,
       code: req.body.code,
       description: req.body.description,
+      coursePicUrl: req.body.coursePicUrl,
       department: req.body.department,
     });
 
@@ -50,6 +51,7 @@ async function createCourse(req, res) {
         title: course.title,
         code: course.code,
         description: course.description,
+        coursePicUrl: course.course_pic_url,
         department: course.department,
         status: course.status,
         createdAt: course.created_at,
@@ -103,7 +105,13 @@ async function getCourse(req, res) {
 async function updateCourse(req, res) {
   try {
     const courseId = Number(req.params.courseId);
-    const course = await service.updateCourse(courseId, req.body || {});
+    const payload = { ...(req.body || {}) };
+    if (payload.coursePicUrl !== undefined) {
+      payload.course_pic_url = payload.coursePicUrl;
+      delete payload.coursePicUrl;
+    }
+
+    const course = await service.updateCourse(courseId, payload);
 
     return res.json({
       message: 'Course updated',

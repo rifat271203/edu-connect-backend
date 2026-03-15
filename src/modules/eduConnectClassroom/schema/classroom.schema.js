@@ -15,6 +15,7 @@ async function ensureClassroomSchema() {
         title VARCHAR(200) NOT NULL,
         code VARCHAR(60) NOT NULL,
         description TEXT,
+        course_pic_url VARCHAR(600) DEFAULT NULL,
         department VARCHAR(120) DEFAULT NULL,
         status ENUM('active', 'archived') NOT NULL DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -24,6 +25,22 @@ async function ensureClassroomSchema() {
         CONSTRAINT fk_courses_teacher FOREIGN KEY (teacher_id) REFERENCES edu_users(id) ON DELETE CASCADE
       )
     `);
+
+    const coursePicColumnRows = await runQuery(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'courses'
+         AND COLUMN_NAME = 'course_pic_url'
+       LIMIT 1`
+    );
+
+    if (!coursePicColumnRows.length) {
+      await runQuery(`
+        ALTER TABLE courses
+        ADD COLUMN course_pic_url VARCHAR(600) DEFAULT NULL
+      `);
+    }
 
     await runQuery(`
       CREATE TABLE IF NOT EXISTS course_staff (

@@ -11,11 +11,18 @@ function buildPaginatedMeta(page, limit, total) {
   };
 }
 
-async function createCourse({ teacherId, title, code, description, department }) {
+async function createCourse({ teacherId, title, code, description, coursePicUrl, department }) {
   const insertCourse = await runQuery(
-    `INSERT INTO courses (teacher_id, title, code, description, department, status)
-     VALUES (?, ?, ?, ?, ?, 'active')`,
-    [teacherId, title.trim(), code.trim().toUpperCase(), description || null, department || null]
+    `INSERT INTO courses (teacher_id, title, code, description, course_pic_url, department, status)
+     VALUES (?, ?, ?, ?, ?, ?, 'active')`,
+    [
+      teacherId,
+      title.trim(),
+      code.trim().toUpperCase(),
+      description || null,
+      coursePicUrl || null,
+      department || null,
+    ]
   );
 
   const courseId = insertCourse.insertId;
@@ -33,7 +40,7 @@ async function createCourse({ teacherId, title, code, description, department })
   );
 
   const rows = await runQuery(
-    `SELECT c.id, c.teacher_id, c.title, c.code, c.description, c.department, c.status, c.created_at,
+    `SELECT c.id, c.teacher_id, c.title, c.code, c.description, c.course_pic_url, c.department, c.status, c.created_at,
             cl.id AS classroom_id, cl.visibility
      FROM courses c
      JOIN classrooms cl ON cl.course_id = c.id
@@ -67,7 +74,7 @@ async function listCourses({ page, limit, q, status, sortBy, sortOrder }) {
   const whereSql = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
 
   const rows = await runQuery(
-    `SELECT c.id, c.teacher_id, c.title, c.code, c.description, c.department, c.status, c.created_at,
+    `SELECT c.id, c.teacher_id, c.title, c.code, c.description, c.course_pic_url, c.department, c.status, c.created_at,
             u.name AS teacher_name
      FROM courses c
      JOIN edu_users u ON u.id = c.teacher_id
@@ -92,7 +99,7 @@ async function listCourses({ page, limit, q, status, sortBy, sortOrder }) {
 
 async function getCourseById(courseId) {
   const rows = await runQuery(
-    `SELECT c.id, c.teacher_id, c.title, c.code, c.description, c.department, c.status, c.created_at, c.updated_at,
+    `SELECT c.id, c.teacher_id, c.title, c.code, c.description, c.course_pic_url, c.department, c.status, c.created_at, c.updated_at,
             u.name AS teacher_name
      FROM courses c
      JOIN edu_users u ON u.id = c.teacher_id
@@ -105,7 +112,7 @@ async function getCourseById(courseId) {
 }
 
 async function updateCourse(courseId, payload) {
-  const updatable = ['title', 'code', 'description', 'department', 'status'];
+  const updatable = ['title', 'code', 'description', 'department', 'status', 'course_pic_url'];
   const fields = [];
   const values = [];
 

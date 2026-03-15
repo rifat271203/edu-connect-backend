@@ -32,21 +32,27 @@ function validateWith(validator) {
 
 function validateCreateCourse(req) {
   const errors = [];
-  const { title, code } = req.body || {};
+  const { title, code, coursePicUrl } = req.body || {};
 
   if (!isNonEmptyString(title)) errors.push('title is required');
   if (!isNonEmptyString(code)) errors.push('code is required');
+  if (coursePicUrl !== undefined && typeof coursePicUrl !== 'string') {
+    errors.push('coursePicUrl must be a string URL');
+  }
 
   return errors;
 }
 
 function validateUpdateCourse(req) {
   const errors = [];
-  const { title, code, description, status } = req.body || {};
+  const { title, code, description, status, coursePicUrl } = req.body || {};
 
   if (title !== undefined && !isNonEmptyString(title)) errors.push('title must be a non-empty string');
   if (code !== undefined && !isNonEmptyString(code)) errors.push('code must be a non-empty string');
   if (description !== undefined && typeof description !== 'string') errors.push('description must be a string');
+  if (coursePicUrl !== undefined && typeof coursePicUrl !== 'string') {
+    errors.push('coursePicUrl must be a string URL');
+  }
   if (status !== undefined && !['active', 'archived'].includes(status)) {
     errors.push('status must be active or archived');
   }
