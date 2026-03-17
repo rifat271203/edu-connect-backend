@@ -217,10 +217,54 @@ async function mountWebRtcFeatures() {
     import('./src/routes/sessions.ts'),
   ]);
 
-  const initSocket = socketModule.initSocket || socketModule.default?.initSocket;
-  const initWorkers = workerModule.initWorkers || workerModule.default?.initWorkers;
-  const authRouter = authModule.authRouter || authModule.default;
-  const sessionRouter = sessionModule.sessionRouter || sessionModule.default;
+  const pickFn = (mod, keys) => {
+    const queue = [mod];
+    const seen = new Set();
+
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== 'object' || seen.has(current)) continue;
+      seen.add(current);
+
+      for (const key of keys) {
+        const candidate = current[key];
+        if (typeof candidate === 'function') return candidate;
+      }
+
+      if (current.default) queue.push(current.default);
+      if (current.__esModule && current.default) queue.push(current.default);
+    }
+
+    return null;
+  };
+
+  const pickRouter = (mod, keys) => {
+    const queue = [mod];
+    const seen = new Set();
+
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== 'object' || seen.has(current)) continue;
+      seen.add(current);
+
+      for (const key of keys) {
+        const candidate = current[key];
+        if (candidate && typeof candidate === 'function' && typeof candidate.use === 'function') {
+          return candidate;
+        }
+      }
+
+      if (current.default) queue.push(current.default);
+      if (current.__esModule && current.default) queue.push(current.default);
+    }
+
+    return null;
+  };
+
+  const initSocket = pickFn(socketModule, ['initSocket']);
+  const initWorkers = pickFn(workerModule, ['initWorkers']);
+  const authRouter = pickRouter(authModule, ['authRouter', 'default']);
+  const sessionRouter = pickRouter(sessionModule, ['sessionRouter', 'default']);
 
   if (typeof initSocket !== 'function') {
     throw new Error('initSocket export was not found in ./src/socket/index.ts');
