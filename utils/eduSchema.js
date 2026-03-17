@@ -39,6 +39,7 @@ async function ensureEduSchema() {
         department VARCHAR(120) DEFAULT NULL,
         institution VARCHAR(160) DEFAULT NULL,
         profile_pic_url VARCHAR(500) DEFAULT NULL,
+        is_profile_public TINYINT(1) NOT NULL DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -56,6 +57,22 @@ async function ensureEduSchema() {
       await runQuery(`
         ALTER TABLE edu_users
         ADD COLUMN profile_pic_url VARCHAR(500) DEFAULT NULL
+      `);
+    }
+
+    const profileVisibilityColumnRows = await runQuery(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'edu_users'
+         AND COLUMN_NAME = 'is_profile_public'
+       LIMIT 1`
+    );
+
+    if (!profileVisibilityColumnRows.length) {
+      await runQuery(`
+        ALTER TABLE edu_users
+        ADD COLUMN is_profile_public TINYINT(1) NOT NULL DEFAULT 1
       `);
     }
 

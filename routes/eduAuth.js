@@ -88,7 +88,7 @@ async function registerByRole(req, res, role) {
 
     const userId = insertResult.insertId;
     const userRows = await runQuery(
-      'SELECT id, name, email, role, department, institution, profile_pic_url, created_at FROM edu_users WHERE id = ?',
+      'SELECT id, name, email, role, department, institution, profile_pic_url, is_profile_public, created_at FROM edu_users WHERE id = ?',
       [userId]
     );
 
@@ -145,6 +145,7 @@ async function loginByRole(req, res, role) {
         department: user.department,
         institution: user.institution,
         profile_pic_url: user.profile_pic_url,
+        is_profile_public: Number(user.is_profile_public) === 1 ? 1 : 0,
       },
     });
   } catch (error) {
@@ -169,7 +170,7 @@ router.get('/me', eduAuthMiddleware, wrapAsync('GET /me', async (req, res) => {
 
   try {
     const users = await runQuery(
-      'SELECT id, name, email, role, department, institution, profile_pic_url, created_at FROM edu_users WHERE id = ?',
+      'SELECT id, name, email, role, department, institution, profile_pic_url, is_profile_public, created_at FROM edu_users WHERE id = ?',
       [req.user.id]
     );
 
@@ -184,6 +185,39 @@ router.get('/me', eduAuthMiddleware, wrapAsync('GET /me', async (req, res) => {
       userId: req.user?.id || null,
     });
   }
+}));
+
+router.patch('/password', eduAuthMiddleware, wrapAsync('PATCH /password', async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ message: 'Unauthorized user context' });
+  }
+
+  const currentPassword = (req.body.currentPassword || '').toString();
+  const newPassword = (req.body.newPassword || '').toString();
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: 'currentPassword and newPassword are required' });
+  }
+
+  if (currentPassword === newPassword) {
+    return res.status(400).json({ message: 'newPassword must be different from currentPassword' });
+  }
+
+  const users = await runQuery('SELECT id, password FROM edu_users WHERE id = ? LIMIT 1', [req.user.id]);
+  if (!users.length) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  const user = users[0];
+  const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password || '');
+  if (!isCurrentPasswordValid) {
+    return res.status(401).json({ message: 'Current password is incorrect' });
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  await runQuery('UPDATE edu_users SET password = ? WHERE id = ?', [hashedPassword, req.user.id]);
+
+  return res.json({ message: 'Password updated successfully' });
 }));
 
 module.exports = router;

@@ -73,6 +73,23 @@ No request body.
 
 Response user now also includes:
 - `profile_pic_url`
+- `is_profile_public` (`1` public, `0` private)
+
+### 1.6 Change Password (Authenticated)
+**PATCH** `/api/auth/password`
+
+Request body:
+```json
+{
+  "currentPassword": "OldPass@123",
+  "newPassword": "NewPass@123"
+}
+```
+
+Rules:
+- Requires valid JWT
+- Verifies `currentPassword`
+- `newPassword` must be different from `currentPassword`
 
 ---
 
@@ -156,6 +173,9 @@ Request body (any one or multiple fields):
 **DELETE** `/api/social/posts/:postId`
 
 No request body.
+
+Access rule:
+- Owner-only for all roles (teacher/student)
 
 ---
 
@@ -438,8 +458,46 @@ Response includes:
 - `stats` (`postCount`, `shareCount`, `friendCount`)
 - `recentPosts` (respecting privacy + viewer relationship)
 
+Access rule:
+- Allowed when target user profile is public
+- Allowed when requester is the same user
+- Allowed when requester and target are friends
+- Otherwise returns `403` with message `This profile is private`
+
 Avatar contract in `recentPosts[]`:
 - `author_profile_pic_url`
+
+### 10.5 Get Own Profile Visibility
+**GET** `/api/social/me/profile-visibility`
+
+No request body.
+
+Response:
+```json
+{
+  "userId": 3,
+  "isPublic": true
+}
+```
+
+### 10.6 Update Own Profile Visibility
+**PATCH** `/api/social/me/profile-visibility`
+
+Request body:
+```json
+{
+  "isPublic": false
+}
+```
+
+Response:
+```json
+{
+  "message": "Profile visibility updated",
+  "userId": 3,
+  "isPublic": false
+}
+```
 
 ---
 

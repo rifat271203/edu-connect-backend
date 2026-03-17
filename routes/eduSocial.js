@@ -54,6 +54,10 @@ async function isUsersFriends(userAId, userBId) {
   return rows.length > 0;
 }
 
+function normalizeProfileVisibility(value) {
+  return Number(value) === 1;
+}
+
 async function getOrCreateDmConversation(userAId, userBId) {
   const [u1, u2] = orderedPair(Number(userAId), Number(userBId));
 
@@ -264,7 +268,7 @@ router.post('/me/profile-pic', (req, res) => {
 router.get('/me/profile', async (req, res) => {
   try {
     const users = await runQuery(
-      `SELECT id, name, email, role, department, institution, profile_pic_url, created_at
+      `SELECT id, name, email, role, department, institution, profile_pic_url, is_profile_public, created_at
        FROM edu_users
        WHERE id = ?`,
       [req.user.id]
@@ -339,7 +343,8 @@ router.get('/me/activity', async (req, res) => {
            p.media_url AS post_media_url,
            p.user_id AS post_author_id,
            u.name AS post_author_name,
-           u.role AS post_author_role
+           u.role AS post_author_role,
+           u.profile_pic_url AS post_author_profile_pic_url
          FROM edu_post_likes l
          JOIN edu_posts p ON p.id = l.post_id
          JOIN edu_users u ON u.id = p.user_id
@@ -358,7 +363,8 @@ router.get('/me/activity', async (req, res) => {
            p.content AS post_content,
            p.user_id AS post_author_id,
            u.name AS post_author_name,
-           u.role AS post_author_role
+           u.role AS post_author_role,
+           u.profile_pic_url AS post_author_profile_pic_url
          FROM edu_comments c
          JOIN edu_posts p ON p.id = c.post_id
          JOIN edu_users u ON u.id = p.user_id
@@ -381,6 +387,50 @@ router.get('/me/activity', async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ message: 'Failed to load own activity', error: error.message });
+  }
+});
+
+router.get('/me/profile-visibility', async (req, res) => {
+  try {
+    const rows = await runQuery(
+      'SELECT id, is_profile_public FROM edu_users WHERE id = ? LIMIT 1',
+      [req.user.id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    return res.json({
+      userId: rows[0].id,
+      isPublic: normalizeProfileVisibility(rows[0].is_profile_public),
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to fetch profile visibility', error: error.message });
+  }
+});
+
+router.patch('/me/profile-visibility', async (req, res) => {
+  const { isPublic } = req.body;
+
+  if (typeof isPublic !== 'boolean') {
+    return res.status(400).json({ message: 'isPublic must be a boolean' });
+  }
+
+  try {
+    const result = await runQuery('UPDATE edu_users SET is_profile_public = ? WHERE id = ?', [isPublic ? 1 : 0, req.user.id]);
+
+    if (!result.affectedRows) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    return res.json({
+      message: 'Profile visibility updated',
+      userId: req.user.id,
+      isPublic,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to update profile visibility', error: error.message });
   }
 });
 
@@ -1215,7 +1265,8 @@ router.get('/notifications', async (req, res) => {
          n.is_read,
          n.created_at,
          u.name AS actor_name,
-         u.role AS actor_role
+         u.role AS actor_role,
+         u.profile_pic_url AS actor_profile_pic_url
        FROM edu_notifications n
        LEFT JOIN edu_users u ON u.id = n.actor_id
        WHERE n.recipient_id = ?
@@ -1296,7 +1347,7 @@ router.get('/users/:userId/profile', async (req, res) => {
 
   try {
     const users = await runQuery(
-      `SELECT id, name, role, department, institution, profile_pic_url, created_at
+      `SELECT id, name, role, department, institution, profile_pic_url, is_profile_public, created_at
        FROM edu_users
        WHERE id = ?`,
       [targetUserId]
@@ -1304,6 +1355,15 @@ router.get('/users/:userId/profile', async (req, res) => {
 
     if (!users.length) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    const targetUser = users[0];
+    const isSelf = Number(req.user.id) === targetUserId;
+    const isFriend = isSelf ? false : await isUsersFriends(req.user.id, targetUserId);
+    const isTargetPublic = normalizeProfileVisibility(targetUser.is_profile_public);
+
+    if (!isTargetPublic && !isSelf && !isFriend) {
+      return res.status(403).json({ message: 'This profile is private' });
     }
 
     const [postCountRows, shareCountRows, friendCountRows] = await Promise.all([
@@ -1349,7 +1409,10 @@ router.get('/users/:userId/profile', async (req, res) => {
     );
 
     return res.json({
-      profile: users[0],
+      profile: {
+        ...targetUser,
+        is_profile_public: isTargetPublic ? 1 : 0,
+      },
       stats: {
         postCount: postCountRows[0].count,
         shareCount: shareCountRows[0].count,
@@ -1419,4 +1482,3 @@ router.get('/search', async (req, res) => {
 });
 
 module.exports = router;
-
