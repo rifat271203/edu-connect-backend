@@ -210,12 +210,29 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3001
 
 async function mountWebRtcFeatures() {
-  const [{ initSocket }, { initWorkers }, { authRouter }, { sessionRouter }] = await Promise.all([
+  const [socketModule, workerModule, authModule, sessionModule] = await Promise.all([
     import('./src/socket/index.ts'),
     import('./src/sfu/worker.ts'),
     import('./src/routes/auth.ts'),
     import('./src/routes/sessions.ts'),
   ]);
+
+  const initSocket = socketModule.initSocket || socketModule.default?.initSocket;
+  const initWorkers = workerModule.initWorkers || workerModule.default?.initWorkers;
+  const authRouter = authModule.authRouter || authModule.default;
+  const sessionRouter = sessionModule.sessionRouter || sessionModule.default;
+
+  if (typeof initSocket !== 'function') {
+    throw new Error('initSocket export was not found in ./src/socket/index.ts');
+  }
+
+  if (typeof initWorkers !== 'function') {
+    throw new Error('initWorkers export was not found in ./src/sfu/worker.ts');
+  }
+
+  if (!authRouter || !sessionRouter) {
+    throw new Error('Route exports were not found for auth/session routers');
+  }
 
   await initWorkers();
   initSocket(io);
