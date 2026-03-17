@@ -82,17 +82,37 @@ function detectLanguage(text) {
 
 // Bangla + English patterns that strongly signal a CONVERSION question
 const CONVERSION_PATTERNS = [
-  // English conversion verbs / phrases
+  // ── Direct conversion verbs ───────────────────────────────────
   /\bconvert\b/i,
   /\bconversion\b/i,
-  /\b(?:how\s+(?:is|are|to|do(?:es)?)\s+\w+\s+(?:made|prepared|synthesized|formed|obtained|produced))\b/i,
   /\bpreparation\s+of\b/i,
   /\bsynthesis\s+of\b/i,
   /\breaction\s+of\b/i,
-  /\bfrom\b.{0,30}\bto\b/i,          // "from A to B"
+
+  // ── "X to Y" — the most common student phrasing ──────────────
+  // Covers: "benzene to benzoic acid", "ethene to ethanol",
+  //         "toluene to benzoic acid", "methane to ethane"
+  /\b[a-zA-Z][a-zA-Z0-9\-]*\s+to\s+[a-zA-Z][a-zA-Z0-9\-]/i,
+
+  // ── "from X" / "get/make X from Y" ───────────────────────────
+  // Covers: "how do i get nitrobenzene from benzene",
+  //         "prepare ethanol from ethene"
+  /\bfrom\s+[a-zA-Z][a-zA-Z0-9]/i,
+
+  // ── "how can/do I make/get/prepare/convert/obtain" ────────────
+  // Covers: "how can i make benzene to benzoic acid"
+  /\bhow\s+(?:can|do|can\s+i|do\s+i|can\s+we|to)\s+(?:make|get|convert|prepare|synthesize|obtain|produce|form)\b/i,
+
+  // ── Imperative: "prepare/synthesize/obtain X" ─────────────────
+  /\b(?:prepare|synthesize|obtain|produce)\s+\w+/i,
+
+  // ── Passive: "how is X made/prepared/formed/obtained" ─────────
+  /\b(?:how\s+(?:is|are|to|do(?:es)?)\s+\w+\s+(?:made|prepared|synthesized|formed|obtained|produced))\b/i,
+
+  // ── Named reaction types ──────────────────────────────────────
   /\b(?:nitration|bromination|chlorination|sulfonation|sulphonation|ozonolysis|hydrogenation|halogenation|alkylation|acylation|esterification|saponification|decarboxylation)\b/i,
 
-  // "mechanism of X" — conversion signal (explain + mechanism together is still conversion)
+  // ── Mechanism keywords ────────────────────────────────────────
   /\bmechanism\s+of\b/i,
   /\bmechanism\s+for\b/i,
   /\bthe\s+mechanism\b/i,
@@ -100,36 +120,36 @@ const CONVERSION_PATTERNS = [
   /\bnucleophilic\s+(?:substitution|addition|attack)\b/i,
   /\bmarkovnikov\b/i,
 
-  // "what is the product / major product" — wants a product, is conversion
+  // ── Product questions ─────────────────────────────────────────
   /\bwhat\s+(?:is|are)\s+(?:the\s+)?(?:product|major\s+product|main\s+product|products)\b/i,
   /\bproduct\s+(?:of|when|formed)\b/i,
 
-  // "when X reacts with Y"
+  // ── "when X reacts with Y" ────────────────────────────────────
   /\bwhen\b.{0,40}\breact/i,
   /\b(?:react(?:s|ed)?)\s+with\b/i,
 
-  // Chemical equation notation in the question text
-  /\b\+\s*(?:[A-Z][a-z]|H\d|Br|Cl|HNO|H2SO|AlCl)\b/,  // "benzene + HNO3"
-  /→|⟶|-->|->|⟹/,                                       // reaction arrow
+  // ── Chemical equation notation ────────────────────────────────
+  /\b\+\s*(?:[A-Z][a-z]|H\d|Br|Cl|HNO|H2SO|AlCl)\b/,
+  /→|⟶|-->|->|⟹/,
 
-  // Bangla conversion keywords
-  /থেকে.*তৈরি/,        // "X থেকে Y তৈরি"
-  /রূপান্তর/,            // "conversion"
-  /প্রস্তুত/,             // "prepare/prepared"
-  /বিক্রিয়া/,            // "reaction"
-  /উৎপন্ন/,              // "produced"
-  /নাইট্রেশন/,           // "nitration"
-  /ব্রোমিনেশন/,          // "bromination"
-  /হ্যালোজিনেশন/,        // "halogenation"
-  /জারণ/,               // "oxidation"
-  /বিজারণ/,             // "reduction"
-  /পলিমারকরণ/,          // "polymerization"
-  /বিক্রিয়ার\s*পদ্ধতি/,  // "reaction mechanism"
-  /ইলেকট্রোফিলিক/,       // "electrophilic"
-  /নিউক্লিওফিলিক/,       // "nucleophilic"
-  /মার্কনিকভ/,           // "Markovnikov"
-  /সমীকরণ/,             // "equation"
-  /বিক্রিয়ার\s*ধাপ/,    // "reaction steps"
+  // ── Bangla conversion keywords ────────────────────────────────
+  /থেকে\s*(?:তৈরি|[a-zA-Z\u0980-\u09FF])/,  // "X থেকে Y" OR "থেকে benzoic"
+  /রূপান্তর/,
+  /প্রস্তুত/,
+  /বিক্রিয়া/,
+  /উৎপন্ন/,
+  /নাইট্রেশন/,
+  /ব্রোমিনেশন/,
+  /হ্যালোজিনেশন/,
+  /জারণ/,
+  /বিজারণ/,
+  /পলিমারকরণ/,
+  /বিক্রিয়ার\s*পদ্ধতি/,
+  /ইলেকট্রোফিলিক/,
+  /নিউক্লিওফিলিক/,
+  /মার্কনিকভ/,
+  /সমীকরণ/,
+  /বিক্রিয়ার\s*ধাপ/,
 ];
 
 // Patterns that STRONGLY signal a description/concept question.
