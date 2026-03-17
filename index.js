@@ -208,6 +208,31 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3001
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-})
+
+async function mountWebRtcFeatures() {
+  const [{ initSocket }, { initWorkers }, { authRouter }, { sessionRouter }] = await Promise.all([
+    import('./src/socket/index.ts'),
+    import('./src/sfu/worker.ts'),
+    import('./src/routes/auth.ts'),
+    import('./src/routes/sessions.ts'),
+  ]);
+
+  await initWorkers();
+  initSocket(io);
+
+  app.use('/api/v1/auth', authRouter);
+  app.use('/api/v1/sessions', sessionRouter);
+}
+
+;(async () => {
+  try {
+    await mountWebRtcFeatures();
+
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`)
+    })
+  } catch (error) {
+    console.error('WEBRTC BOOTSTRAP FAILED:', error)
+    process.exit(1)
+  }
+})()
