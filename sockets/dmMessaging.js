@@ -1,10 +1,12 @@
 const jwt = require('jsonwebtoken');
 const { runQuery, ensureEduSchema } = require('../utils/eduSchema');
+const { getJwtSecret } = require('../utils/security');
 
 const DM_RATE_LIMIT_WINDOW_MS = Number(process.env.DM_RATE_LIMIT_WINDOW_MS || 5000);
 const DM_RATE_LIMIT_MAX_EVENTS = Number(process.env.DM_RATE_LIMIT_MAX_EVENTS || 60);
 
 const dmRateBuckets = new Map();
+const JWT_SECRET = getJwtSecret();
 
 function isRateLimited(socketId, eventName) {
   const key = `${socketId}:${eventName}`;
@@ -30,7 +32,7 @@ function decodeTokenFromPayload(payload = {}) {
     throw new Error('Token is required');
   }
 
-  return jwt.verify(token, process.env.JWT_SECRET || 'default_secret_key');
+  return jwt.verify(token, JWT_SECRET);
 }
 
 function orderedPair(a, b) {

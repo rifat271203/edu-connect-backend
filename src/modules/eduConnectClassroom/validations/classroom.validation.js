@@ -6,6 +6,23 @@ function isBoolean(value) {
   return typeof value === 'boolean';
 }
 
+function isSafeHttpOrRelativeUrl(value) {
+  if (typeof value !== 'string') return false;
+  const raw = value.trim();
+  if (!raw) return false;
+
+  if (raw.startsWith('/')) {
+    return !raw.startsWith('//');
+  }
+
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch (_error) {
+    return false;
+  }
+}
+
 function getPagination(query = {}) {
   const page = Number.parseInt(query.page, 10) || 1;
   const limit = Number.parseInt(query.limit, 10) || 20;
@@ -36,8 +53,8 @@ function validateCreateCourse(req) {
 
   if (!isNonEmptyString(title)) errors.push('title is required');
   if (!isNonEmptyString(code)) errors.push('code is required');
-  if (coursePicUrl !== undefined && typeof coursePicUrl !== 'string') {
-    errors.push('coursePicUrl must be a string URL');
+  if (coursePicUrl !== undefined && !isSafeHttpOrRelativeUrl(coursePicUrl)) {
+    errors.push('coursePicUrl must be an http(s) or relative URL');
   }
 
   return errors;
@@ -50,8 +67,8 @@ function validateUpdateCourse(req) {
   if (title !== undefined && !isNonEmptyString(title)) errors.push('title must be a non-empty string');
   if (code !== undefined && !isNonEmptyString(code)) errors.push('code must be a non-empty string');
   if (description !== undefined && typeof description !== 'string') errors.push('description must be a string');
-  if (coursePicUrl !== undefined && typeof coursePicUrl !== 'string') {
-    errors.push('coursePicUrl must be a string URL');
+  if (coursePicUrl !== undefined && !isSafeHttpOrRelativeUrl(coursePicUrl)) {
+    errors.push('coursePicUrl must be an http(s) or relative URL');
   }
   if (status !== undefined && !['active', 'archived'].includes(status)) {
     errors.push('status must be active or archived');

@@ -4,8 +4,15 @@ const fs = require('fs-extra');
 const multer = require('multer');
 const eduAuthMiddleware = require('../middleware/eduAuthMiddleware');
 const { runQuery, ensureEduSchema } = require('../utils/eduSchema');
+const { buildPublicFileUrl, isSafeHttpUrl, createRateLimiter } = require('../utils/security');
 
 const router = express.Router();
+
+const socialMutationRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 100,
+  message: 'Too many social actions. Please slow down.',
+});
 
 function logSocialError(routeName, req, error) {
   console.error('EDU SOCIAL ERROR:', {
@@ -176,11 +183,29 @@ const uploadProfilePicMiddleware = multer({
 }).single('profilePic');
 
 function buildMediaUrl(req, filename) {
-  return `${req.protocol}://${req.get('host')}/uploads/social/${filename}`;
+  return buildPublicFileUrl(req, `uploads/social/${filename}`);
 }
 
 function buildProfilePicUrl(req, filename) {
-  return `${req.protocol}://${req.get('host')}/uploads/profiles/${filename}`;
+  return buildPublicFileUrl(req, `uploads/profiles/${filename}`);
+}
+
+function sanitizeOptionalText(value, { maxLen = 5000 } = {}) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, maxLen);
+}
+
+function validateOptionalMediaUrl(value) {
+  if (value === undefined || value === null || value === '') return { ok: true, value: null };
+  if (typeof value !== 'string') return { ok: false, message: 'mediaUrl must be a string URL' };
+  const trimmed = value.trim();
+  if (!isSafeHttpUrl(trimmed, { allowRelative: true })) {
+    return { ok: false, message: 'mediaUrl must be an http(s) or relative URL' };
+  }
+  return { ok: true, value: trimmed };
 }
 
 async function createNotification({ recipientId, actorId, type, entityType, entityId, message }) {
@@ -203,7 +228,7 @@ async function createNotification({ recipientId, actorId, type, entityType, enti
   }
 }
 
-router.post('/upload-media', (req, res) => {
+router.post('/upload-media', socialMutationRateLimiter, (req, res) => {
   uploadMediaMiddleware(req, res, (error) => {
     if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ message: 'File is too large. Max allowed size is 50 MB' });
@@ -229,7 +254,7 @@ router.post('/upload-media', (req, res) => {
   });
 });
 
-router.post('/me/profile-pic', (req, res) => {
+router.post('/me/profile-pic', socialMutationRateLimiter, (req, res) => {
   uploadProfilePicMiddleware(req, res, async (error) => {
     if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ message: 'Profile picture is too large. Max allowed size is 10 MB' });
@@ -435,10 +460,16 @@ router.patch('/me/profile-visibility', async (req, res) => {
 });
 
 // --- Posts ---
-router.post('/posts', async (req, res) => {
+router.post('/posts', socialMutationRateLimiter, async (req, res) => {
   const { content, mediaUrl, privacy } = req.body;
+  const safeContent = sanitizeOptionalText(content, { maxLen: 10000 });
+  const safeMediaUrl = validateOptionalMediaUrl(mediaUrl);
 
-  if (!content && !mediaUrl) {
+  if (!safeMediaUrl || !safeMediaUrl.ok) {
+    return res.status(400).json({ message: safeMediaUrl?.message || 'Invalid mediaUrl' });
+  }
+
+  if (!safeContent && !safeMediaUrl.value) {
     return res.status(400).json({ message: 'Either content or mediaUrl is required' });
   }
 
@@ -451,7 +482,7 @@ router.post('/posts', async (req, res) => {
     const result = await runQuery(
       `INSERT INTO edu_posts (user_id, content, media_url, privacy)
        VALUES (?, ?, ?, ?)`,
-      [req.user.id, content || null, mediaUrl || null, privacy || 'public']
+      [req.user.id, safeContent, safeMediaUrl.value, privacy || 'public']
     );
 
     const rows = await runQuery(
@@ -548,8 +579,18 @@ router.get('/posts/:postId', async (req, res) => {
   }
 });
 
-router.patch('/posts/:postId', async (req, res) => {
+router.patch('/posts/:postId', socialMutationRateLimiter, async (req, res) => {
   const { content, mediaUrl, privacy } = req.body;
+  const safeContent = content === undefined ? undefined : sanitizeOptionalText(content, { maxLen: 10000 });
+  const safeMediaUrl = mediaUrl === undefined ? { ok: true, value: undefined } : validateOptionalMediaUrl(mediaUrl);
+
+  if (!safeMediaUrl.ok) {
+    return res.status(400).json({ message: safeMediaUrl.message });
+  }
+
+  if (content !== undefined && typeof content !== 'string') {
+    return res.status(400).json({ message: 'content must be a string' });
+  }
 
   if (content === undefined && mediaUrl === undefined && privacy === undefined) {
     return res.status(400).json({ message: 'At least one field is required for update' });
@@ -577,7 +618,7 @@ router.patch('/posts/:postId', async (req, res) => {
            media_url = COALESCE(?, media_url),
            privacy = COALESCE(?, privacy)
        WHERE id = ?`,
-      [content ?? null, mediaUrl ?? null, privacy ?? null, req.params.postId]
+      [safeContent ?? null, safeMediaUrl.value ?? null, privacy ?? null, req.params.postId]
     );
 
     const updated = await runQuery('SELECT * FROM edu_posts WHERE id = ?', [req.params.postId]);
@@ -587,7 +628,7 @@ router.patch('/posts/:postId', async (req, res) => {
   }
 });
 
-router.delete('/posts/:postId', async (req, res) => {
+router.delete('/posts/:postId', socialMutationRateLimiter, async (req, res) => {
   try {
     const postRows = await runQuery('SELECT * FROM edu_posts WHERE id = ?', [req.params.postId]);
     if (!postRows.length) {
@@ -607,7 +648,7 @@ router.delete('/posts/:postId', async (req, res) => {
 });
 
 // --- Likes ---
-router.post('/posts/:postId/likes', async (req, res) => {
+router.post('/posts/:postId/likes', socialMutationRateLimiter, async (req, res) => {
   try {
     const postRows = await runQuery('SELECT id, user_id FROM edu_posts WHERE id = ?', [req.params.postId]);
     if (!postRows.length) {
@@ -640,7 +681,7 @@ router.post('/posts/:postId/likes', async (req, res) => {
   }
 });
 
-router.delete('/posts/:postId/likes', async (req, res) => {
+router.delete('/posts/:postId/likes', socialMutationRateLimiter, async (req, res) => {
   try {
     await runQuery('DELETE FROM edu_post_likes WHERE post_id = ? AND user_id = ?', [
       req.params.postId,
@@ -658,11 +699,16 @@ router.delete('/posts/:postId/likes', async (req, res) => {
 });
 
 // --- Comments ---
-router.post('/posts/:postId/comments', async (req, res) => {
+router.post('/posts/:postId/comments', socialMutationRateLimiter, async (req, res) => {
   const { commentText, parentCommentId } = req.body;
+  const safeCommentText = sanitizeOptionalText(commentText, { maxLen: 5000 });
 
-  if (!commentText || !commentText.trim()) {
+  if (!safeCommentText) {
     return res.status(400).json({ message: 'commentText is required' });
+  }
+
+  if (typeof commentText !== 'string') {
+    return res.status(400).json({ message: 'commentText must be a string' });
   }
 
   try {
@@ -674,7 +720,7 @@ router.post('/posts/:postId/comments', async (req, res) => {
     const result = await runQuery(
       `INSERT INTO edu_comments (post_id, user_id, comment_text, parent_comment_id)
        VALUES (?, ?, ?, ?)`,
-      [req.params.postId, req.user.id, commentText, parentCommentId || null]
+      [req.params.postId, req.user.id, safeCommentText, parentCommentId || null]
     );
 
     await createNotification({
@@ -700,7 +746,7 @@ router.post('/posts/:postId/comments', async (req, res) => {
   }
 });
 
-router.delete('/comments/:commentId', async (req, res) => {
+router.delete('/comments/:commentId', socialMutationRateLimiter, async (req, res) => {
   try {
     const rows = await runQuery('SELECT * FROM edu_comments WHERE id = ?', [req.params.commentId]);
     if (!rows.length) {
@@ -719,8 +765,13 @@ router.delete('/comments/:commentId', async (req, res) => {
 });
 
 // --- Shares ---
-router.post('/posts/:postId/shares', async (req, res) => {
+router.post('/posts/:postId/shares', socialMutationRateLimiter, async (req, res) => {
   const { caption } = req.body;
+  const safeCaption = sanitizeOptionalText(caption, { maxLen: 2000 });
+
+  if (caption !== undefined && typeof caption !== 'string') {
+    return res.status(400).json({ message: 'caption must be a string' });
+  }
 
   try {
     const postRows = await runQuery('SELECT id, user_id FROM edu_posts WHERE id = ?', [req.params.postId]);
@@ -730,7 +781,7 @@ router.post('/posts/:postId/shares', async (req, res) => {
 
     const result = await runQuery(
       'INSERT INTO edu_shares (post_id, user_id, caption) VALUES (?, ?, ?)',
-      [req.params.postId, req.user.id, caption || null]
+      [req.params.postId, req.user.id, safeCaption]
     );
 
     await createNotification({
@@ -780,7 +831,7 @@ router.get('/shares', async (req, res) => {
 });
 
 // --- Friend Requests & Friendships ---
-router.post('/friend-requests', async (req, res) => {
+router.post('/friend-requests', socialMutationRateLimiter, async (req, res) => {
   const { receiverId } = req.body;
   const senderId = req.user.id;
 
@@ -876,7 +927,7 @@ router.get('/friend-requests', async (req, res) => {
   }
 });
 
-router.patch('/friend-requests/:requestId/respond', async (req, res) => {
+router.patch('/friend-requests/:requestId/respond', socialMutationRateLimiter, async (req, res) => {
   const { action } = req.body;
 
   if (!['accepted', 'rejected'].includes(action)) {
@@ -916,7 +967,7 @@ router.patch('/friend-requests/:requestId/respond', async (req, res) => {
   }
 });
 
-router.delete('/friend-requests/:requestId', async (req, res) => {
+router.delete('/friend-requests/:requestId', socialMutationRateLimiter, async (req, res) => {
   try {
     const rows = await runQuery('SELECT * FROM edu_friend_requests WHERE id = ?', [req.params.requestId]);
     if (!rows.length) {
@@ -1026,7 +1077,7 @@ router.get('/users/:userId/friends', async (req, res) => {
   }
 });
 
-router.delete('/friends/:friendId', async (req, res) => {
+router.delete('/friends/:friendId', socialMutationRateLimiter, async (req, res) => {
   const friendId = Number(req.params.friendId);
   const userId = Number(req.user.id);
 
@@ -1175,7 +1226,7 @@ router.get('/dm/messages/:userId', async (req, res) => {
   }
 });
 
-router.post('/dm/messages', async (req, res) => {
+router.post('/dm/messages', socialMutationRateLimiter, async (req, res) => {
   const receiverId = Number(req.body.receiverId);
   const senderId = Number(req.user.id);
   const messageText = (req.body.messageText || '').toString().trim();
@@ -1252,7 +1303,7 @@ router.post('/dm/messages', async (req, res) => {
   }
 });
 
-router.patch('/dm/messages/:messageId/read', async (req, res) => {
+router.patch('/dm/messages/:messageId/read', socialMutationRateLimiter, async (req, res) => {
   const messageId = Number(req.params.messageId);
   const readerId = Number(req.user.id);
 
@@ -1347,7 +1398,7 @@ router.get('/notifications/unread-count', async (req, res) => {
   }
 });
 
-router.patch('/notifications/:notificationId/read', async (req, res) => {
+router.patch('/notifications/:notificationId/read', socialMutationRateLimiter, async (req, res) => {
   const { isRead } = req.body;
 
   if (isRead !== true) {
@@ -1370,7 +1421,7 @@ router.patch('/notifications/:notificationId/read', async (req, res) => {
   }
 });
 
-router.patch('/notifications/read-all', async (req, res) => {
+router.patch('/notifications/read-all', socialMutationRateLimiter, async (req, res) => {
   const { isRead } = req.body;
 
   if (isRead !== true) {

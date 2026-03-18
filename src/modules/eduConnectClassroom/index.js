@@ -11,7 +11,6 @@ router.use(async (req, res, next) => {
   } catch (error) {
     return res.status(500).json({
       message: 'Failed to initialize classroom module schema',
-      error: error.message,
     });
   }
 });

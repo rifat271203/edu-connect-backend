@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 
 import { config } from '../config';
+import { authMiddleware } from '../middleware/auth';
 
 const bodySchema = z.object({
   userId: z.string().min(1),
@@ -14,6 +15,11 @@ const bodySchema = z.object({
 const authRouter = Router();
 
 authRouter.post('/token', (req, res) => {
+  if (process.env.ENABLE_INTERNAL_TOKEN_MINT !== 'true') {
+    res.status(404).json({ code: 'NOT_FOUND', message: 'Not found' });
+    return;
+  }
+
   const parsed = bodySchema.safeParse(req.body);
 
   if (!parsed.success) {
@@ -36,6 +42,10 @@ authRouter.post('/token', (req, res) => {
   );
 
   res.json({ token });
+});
+
+authRouter.get('/me', authMiddleware, (req, res) => {
+  res.json({ user: req.user });
 });
 
 export { authRouter };

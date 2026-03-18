@@ -14,6 +14,27 @@ const createSessionSchema = z.object({
   scheduledAt: z.string().datetime().optional(),
 });
 
+const isSafeRoomId = (roomId: string): boolean => /^[A-Za-z0-9_-]{6,64}$/.test(roomId);
+
+const buildJoinUrl = (roomId: string): string => {
+  const fallbackBase = 'https://edu-connect-frontend-three.vercel.app';
+  const configuredBase = String(process.env.FRONTEND_PUBLIC_BASE_URL || '').trim();
+
+  if (configuredBase) {
+    try {
+      const parsed = new URL(configuredBase);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        const basePath = parsed.pathname && parsed.pathname !== '/' ? parsed.pathname.replace(/\/+$/, '') : '';
+        return `${parsed.origin}${basePath}/classroom/${roomId}`;
+      }
+    } catch (_error) {
+      // ignore and fall back to default
+    }
+  }
+
+  return `${fallbackBase}/classroom/${roomId}`;
+};
+
 const sessionRouter = Router();
 
 sessionRouter.use(authMiddleware);
@@ -48,7 +69,7 @@ sessionRouter.post('/', async (req, res) => {
 
     res.status(201).json({
       roomId,
-      joinUrl: `https://edu-connect-frontend-three.vercel.app/classroom/${roomId}`,
+      joinUrl: buildJoinUrl(roomId),
       title: parsed.data.title,
     });
   } catch (error: unknown) {
@@ -60,6 +81,11 @@ sessionRouter.post('/', async (req, res) => {
 sessionRouter.get('/:roomId', async (req, res) => {
   try {
     const { roomId } = req.params;
+    if (!isSafeRoomId(roomId)) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid roomId' });
+      return;
+    }
+
     const meta = await getRoomMeta(roomId);
 
     if (!meta) {
@@ -89,6 +115,11 @@ sessionRouter.post('/:roomId/end', async (req, res) => {
     }
 
     const { roomId } = req.params;
+    if (!isSafeRoomId(roomId)) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid roomId' });
+      return;
+    }
+
     const meta = await getRoomMeta(roomId);
 
     if (!meta) {
@@ -113,6 +144,11 @@ sessionRouter.post('/:roomId/end', async (req, res) => {
 sessionRouter.get('/:roomId/chat', async (req, res) => {
   try {
     const { roomId } = req.params;
+    if (!isSafeRoomId(roomId)) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid roomId' });
+      return;
+    }
+
     const key = getRoomChatKey(roomId);
 
     const rawMessages = await redis.lrange(key, 0, 99);

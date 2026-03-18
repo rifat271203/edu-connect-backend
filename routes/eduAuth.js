@@ -3,8 +3,22 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const eduAuthMiddleware = require('../middleware/eduAuthMiddleware');
 const { runQuery, ensureEduSchema } = require('../utils/eduSchema');
+const { getJwtSecret, createRateLimiter, hashIpForLogs } = require('../utils/security');
 
 const router = express.Router();
+const jwtSecret = getJwtSecret();
+
+const authAttemptRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many authentication attempts. Please try again later.',
+});
+
+const passwordUpdateRateLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: 8,
+  message: 'Too many password update attempts. Please try again later.',
+});
 
 function safeErrorResponse(res, status, message, error, context = {}) {
   console.error('EDU AUTH ERROR:', {
@@ -61,7 +75,7 @@ function signEduToken(user) {
       email: user.email,
       role: user.role,
     },
-    process.env.JWT_SECRET || 'default_secret_key',
+    jwtSecret,
     { expiresIn: '1h' }
   );
 }
@@ -74,7 +88,30 @@ async function registerByRole(req, res, role) {
   }
 
   try {
-    const existing = await runQuery('SELECT id FROM edu_users WHERE email = ?', [email]);
+    if (typeof name !== 'string' || name.length > 120) {
+      return res.status(400).json({ message: 'name must be a string up to 120 characters' });
+    }
+
+    if (typeof email !== 'string' || email.length > 190) {
+      return res.status(400).json({ message: 'email must be a string up to 190 characters' });
+    }
+
+    if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
+      return res.status(400).json({ message: 'password must be between 8 and 128 characters' });
+    }
+
+    if (department !== undefined && (typeof department !== 'string' || department.length > 120)) {
+      return res.status(400).json({ message: 'department must be a string up to 120 characters' });
+    }
+
+    if (institution !== undefined && (typeof institution !== 'string' || institution.length > 160)) {
+      return res.status(400).json({ message: 'institution must be a string up to 160 characters' });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedName = String(name).trim();
+
+    const existing = await runQuery('SELECT id FROM edu_users WHERE email = ?', [normalizedEmail]);
     if (existing.length) {
       return res.status(409).json({ message: 'Email already exists' });
     }
@@ -83,7 +120,7 @@ async function registerByRole(req, res, role) {
     const insertResult = await runQuery(
       `INSERT INTO edu_users (name, email, password, role, department, institution)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [name, email, hashedPassword, role, department || null, institution || null]
+      [normalizedName, normalizedEmail, hashedPassword, role, department || null, institution || null]
     );
 
     const userId = insertResult.insertId;
@@ -121,7 +158,9 @@ async function loginByRole(req, res, role) {
   }
 
   try {
-    const users = await runQuery('SELECT * FROM edu_users WHERE email = ? AND role = ?', [email, role]);
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const users = await runQuery('SELECT * FROM edu_users WHERE email = ? AND role = ?', [normalizedEmail, role]);
     if (!users.length) {
       return res.status(404).json({ message: `${role} account not found` });
     }
@@ -157,11 +196,11 @@ async function loginByRole(req, res, role) {
   }
 }
 
-router.post('/teachers/register', wrapAsync('POST /teachers/register', async (req, res) => registerByRole(req, res, 'teacher')));
-router.post('/students/register', wrapAsync('POST /students/register', async (req, res) => registerByRole(req, res, 'student')));
+router.post('/teachers/register', authAttemptRateLimiter, wrapAsync('POST /teachers/register', async (req, res) => registerByRole(req, res, 'teacher')));
+router.post('/students/register', authAttemptRateLimiter, wrapAsync('POST /students/register', async (req, res) => registerByRole(req, res, 'student')));
 
-router.post('/teachers/login', wrapAsync('POST /teachers/login', async (req, res) => loginByRole(req, res, 'teacher')));
-router.post('/students/login', wrapAsync('POST /students/login', async (req, res) => loginByRole(req, res, 'student')));
+router.post('/teachers/login', authAttemptRateLimiter, wrapAsync('POST /teachers/login', async (req, res) => loginByRole(req, res, 'teacher')));
+router.post('/students/login', authAttemptRateLimiter, wrapAsync('POST /students/login', async (req, res) => loginByRole(req, res, 'student')));
 
 router.get('/me', eduAuthMiddleware, wrapAsync('GET /me', async (req, res) => {
   if (!req.user || !req.user.id) {
@@ -187,16 +226,21 @@ router.get('/me', eduAuthMiddleware, wrapAsync('GET /me', async (req, res) => {
   }
 }));
 
-router.patch('/password', eduAuthMiddleware, wrapAsync('PATCH /password', async (req, res) => {
+router.patch('/password', passwordUpdateRateLimiter, eduAuthMiddleware, wrapAsync('PATCH /password', async (req, res) => {
   if (!req.user || !req.user.id) {
     return res.status(401).json({ message: 'Unauthorized user context' });
   }
 
   const currentPassword = (req.body.currentPassword || '').toString();
   const newPassword = (req.body.newPassword || '').toString();
+  const ipHash = hashIpForLogs(req.ip);
 
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ message: 'currentPassword and newPassword are required' });
+  }
+
+  if (newPassword.length < 8 || newPassword.length > 128) {
+    return res.status(400).json({ message: 'newPassword must be between 8 and 128 characters' });
   }
 
   if (currentPassword === newPassword) {
@@ -211,6 +255,10 @@ router.patch('/password', eduAuthMiddleware, wrapAsync('PATCH /password', async 
   const user = users[0];
   const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password || '');
   if (!isCurrentPasswordValid) {
+    console.warn('AUTH PASSWORD UPDATE: invalid current password', {
+      userId: req.user?.id || null,
+      ipHash,
+    });
     return res.status(401).json({ message: 'Current password is incorrect' });
   }
 

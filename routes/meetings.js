@@ -2,15 +2,22 @@ const crypto = require('crypto');
 const express = require('express');
 const eduAuthMiddleware = require('../middleware/eduAuthMiddleware');
 const { runQuery, ensureEduSchema } = require('../utils/eduSchema');
+const { createRateLimiter, hashIpForLogs } = require('../utils/security');
 
 const router = express.Router();
+
+const createMeetingRateLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  message: 'Too many meeting create attempts',
+});
 
 router.use(async (req, res, next) => {
   try {
     await ensureEduSchema();
     next();
   } catch (error) {
-    res.status(500).json({ message: 'Failed to initialize meeting schema', error: error.message });
+    res.status(500).json({ message: 'Failed to initialize meeting schema' });
   }
 });
 
@@ -18,8 +25,13 @@ function createRoomId() {
   return `room_${Date.now().toString(36)}_${crypto.randomBytes(4).toString('hex')}`;
 }
 
-router.post('/create', eduAuthMiddleware, async (req, res) => {
+router.post('/create', createMeetingRateLimiter, eduAuthMiddleware, async (req, res) => {
   const { title } = req.body || {};
+  const ipHash = hashIpForLogs(req.ip);
+
+  if (title !== undefined && (typeof title !== 'string' || title.length > 255)) {
+    return res.status(400).json({ message: 'title must be a string up to 255 characters' });
+  }
 
   if (req.user.role !== 'teacher') {
     return res.status(403).json({ message: 'Only teacher accounts can create a meeting' });
@@ -55,7 +67,13 @@ router.post('/create', eduAuthMiddleware, async (req, res) => {
       meetingId: insertResult.insertId,
     });
   } catch (error) {
-    return res.status(500).json({ message: 'Failed to create meeting', error: error.message });
+    console.error('MEETING CREATE FAILED', {
+      userId: req.user?.id || null,
+      ipHash,
+      message: error.message,
+      code: error.code,
+    });
+    return res.status(500).json({ message: 'Failed to create meeting' });
   }
 });
 
@@ -94,7 +112,7 @@ router.get('/:roomId', async (req, res) => {
       createdAt: meeting.created_at,
     });
   } catch (error) {
-    return res.status(500).json({ message: 'Failed to fetch meeting info', error: error.message });
+    return res.status(500).json({ message: 'Failed to fetch meeting info' });
   }
 });
 
@@ -124,7 +142,7 @@ router.post('/:roomId/end', eduAuthMiddleware, async (req, res) => {
 
     return res.json({ message: 'Meeting ended successfully', roomId: req.params.roomId, isActive: false });
   } catch (error) {
-    return res.status(500).json({ message: 'Failed to end meeting', error: error.message });
+    return res.status(500).json({ message: 'Failed to end meeting' });
   }
 });
 

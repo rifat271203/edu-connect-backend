@@ -1,14 +1,19 @@
 const jwt = require('jsonwebtoken');
 const { runQuery } = require('../utils/eduSchema');
+const { getJwtSecret, hashIpForLogs } = require('../utils/security');
+
+const JWT_SECRET = getJwtSecret();
 
 async function eduAuthMiddleware(req, res, next) {
   const header = req.headers.authorization || '';
   const hasAuthHeader = Boolean(header);
+  const ipHash = hashIpForLogs(req.ip);
 
   console.log('AUTH CHECK:', {
     method: req.method,
     path: req.originalUrl,
     hasAuthorizationHeader: hasAuthHeader,
+    ipHash,
   });
 
   if (!header.startsWith('Bearer ')) {
@@ -24,19 +29,20 @@ async function eduAuthMiddleware(req, res, next) {
   let decoded;
 
   try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET || 'default_secret_key');
+    decoded = jwt.verify(token, JWT_SECRET);
     console.log('AUTH TOKEN VERIFY: success', {
       method: req.method,
       path: req.originalUrl,
       userId: decoded?.id || null,
       role: decoded?.role || null,
+      ipHash,
     });
   } catch (error) {
     console.warn('AUTH TOKEN VERIFY: failed', {
       method: req.method,
       path: req.originalUrl,
       errorName: error.name,
-      errorMessage: error.message,
+      ipHash,
     });
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
@@ -46,6 +52,7 @@ async function eduAuthMiddleware(req, res, next) {
       method: req.method,
       path: req.originalUrl,
       hasDecodedPayload: Boolean(decoded),
+      ipHash,
     });
     return res.status(401).json({ message: 'Invalid authentication payload' });
   }
@@ -61,6 +68,7 @@ async function eduAuthMiddleware(req, res, next) {
         method: req.method,
         path: req.originalUrl,
         tokenUserId: decoded.id,
+        ipHash,
       });
       return res.status(404).json({ message: 'Authenticated user not found' });
     }
@@ -81,6 +89,7 @@ async function eduAuthMiddleware(req, res, next) {
       path: req.originalUrl,
       userId: req.user.id,
       role: req.user.role,
+      ipHash,
     });
 
     return next();
@@ -91,7 +100,7 @@ async function eduAuthMiddleware(req, res, next) {
       tokenUserId: decoded.id,
       code: error.code,
       errno: error.errno,
-      message: error.message,
+      ipHash,
     });
     return res.status(500).json({ message: 'Authentication lookup failed' });
   }
