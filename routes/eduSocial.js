@@ -973,6 +973,59 @@ router.get('/friends', async (req, res) => {
   }
 });
 
+router.get('/users/:userId/friends', async (req, res) => {
+  const targetUserId = Number(req.params.userId);
+
+  if (!targetUserId) {
+    return res.status(400).json({ message: 'Valid userId is required' });
+  }
+
+  try {
+    const targetRows = await runQuery(
+      'SELECT id, is_profile_public FROM edu_users WHERE id = ? LIMIT 1',
+      [targetUserId]
+    );
+
+    if (!targetRows.length) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const isSelf = Number(req.user.id) === targetUserId;
+    const isTargetPublic = normalizeProfileVisibility(targetRows[0].is_profile_public);
+    const isFriendWithTarget = isSelf ? true : await isUsersFriends(req.user.id, targetUserId);
+
+    if (!isTargetPublic && !isSelf && !isFriendWithTarget) {
+      return res.status(403).json({ message: 'This profile is private' });
+    }
+
+    const friends = await runQuery(
+      `SELECT
+         u.id,
+         u.name,
+         u.email,
+         u.role,
+         u.department,
+         u.institution,
+         u.profile_pic_url,
+         f.created_at AS friends_since
+       FROM edu_friendships f
+       JOIN edu_users u
+         ON u.id = CASE WHEN f.user1_id = ? THEN f.user2_id ELSE f.user1_id END
+       WHERE f.user1_id = ? OR f.user2_id = ?
+       ORDER BY f.created_at DESC`,
+      [targetUserId, targetUserId, targetUserId]
+    );
+
+    return res.json({
+      userId: targetUserId,
+      friends,
+      totalFriends: friends.length,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to fetch user friends', error: error.message });
+  }
+});
+
 router.delete('/friends/:friendId', async (req, res) => {
   const friendId = Number(req.params.friendId);
   const userId = Number(req.user.id);

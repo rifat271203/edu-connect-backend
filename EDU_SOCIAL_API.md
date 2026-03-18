@@ -305,6 +305,22 @@ Avatar contract in friend object:
 
 No request body.
 
+### 7.3 Get a Specific User's Friend List
+**GET** `/api/social/users/:userId/friends`
+
+No request body.
+
+Response includes:
+- `userId` (target user id)
+- `friends` (target user's friend list)
+- `totalFriends` (count)
+
+Access rule:
+- Allowed when target user profile is public
+- Allowed when requester is the same user
+- Allowed when requester and target are friends
+- Otherwise returns `403` with message `This profile is private`
+
 ---
 
 ## 8) Search Endpoints
