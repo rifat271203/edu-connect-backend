@@ -1,5 +1,6 @@
 const express = require('express');
 const classroomRoutes = require('./routes/classroom.routes');
+const roomRouters = require('./rooms');
 const { ensureClassroomSchema } = require('./schema/classroom.schema');
 
 const router = express.Router();
@@ -16,6 +17,7 @@ router.use(async (req, res, next) => {
 });
 
 router.use(classroomRoutes);
+router.use(roomRouters);
 
 module.exports = router;
 

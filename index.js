@@ -7,6 +7,7 @@ const http = require('http')
 const { Server } = require('socket.io')
 const { registerMeetingSignaling } = require('./sockets/meetingSignaling')
 const { registerDMMessaging } = require('./sockets/dmMessaging')
+const { registerClassroomSocket } = require('./src/modules/eduConnectClassroom/socket')
 const {
   getJwtSecret,
   parseAllowedOrigins,
@@ -45,6 +46,7 @@ const io = new Server(server, {
 
 registerMeetingSignaling(io)
 registerDMMessaging(io)
+registerClassroomSocket(io)
 app.set('io', io)
 
 app.disable('x-powered-by')

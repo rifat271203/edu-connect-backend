@@ -367,6 +367,212 @@ async function ensureClassroomSchema() {
         CONSTRAINT fk_classroom_notifications_course FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
       )
     `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS classroom_room_messages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        course_id INT NOT NULL,
+        sender_id INT NOT NULL,
+        content TEXT,
+        file_url VARCHAR(600) DEFAULT NULL,
+        file_type VARCHAR(120) DEFAULT NULL,
+        is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_classroom_room_messages_course_created (course_id, created_at),
+        INDEX idx_classroom_room_messages_course_id (course_id, id),
+        CONSTRAINT fk_classroom_room_messages_course FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_room_messages_sender FOREIGN KEY (sender_id) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS classroom_room_notices (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        course_id INT NOT NULL,
+        author_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        body TEXT NOT NULL,
+        priority ENUM('low', 'medium', 'high', 'urgent') NOT NULL DEFAULT 'low',
+        pinned TINYINT(1) NOT NULL DEFAULT 0,
+        attachment_url VARCHAR(600) DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_classroom_room_notices_course_created (course_id, created_at),
+        INDEX idx_classroom_room_notices_course_priority (course_id, priority),
+        CONSTRAINT fk_classroom_room_notices_course FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_room_notices_author FOREIGN KEY (author_id) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS classroom_notice_acknowledgements (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        notice_id INT NOT NULL,
+        user_id INT NOT NULL,
+        acknowledged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_classroom_notice_ack (notice_id, user_id),
+        INDEX idx_classroom_notice_ack_user (user_id, acknowledged_at),
+        CONSTRAINT fk_classroom_notice_ack_notice FOREIGN KEY (notice_id) REFERENCES classroom_room_notices(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_notice_ack_user FOREIGN KEY (user_id) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS classroom_shared_notes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        course_id INT NOT NULL,
+        uploaded_by INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        file_url VARCHAR(600) NOT NULL,
+        file_type VARCHAR(120) DEFAULT NULL,
+        category ENUM('pdf', 'video', 'link', 'doc') NOT NULL,
+        download_count INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_classroom_shared_notes_course_created (course_id, created_at),
+        CONSTRAINT fk_classroom_shared_notes_course FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_shared_notes_uploader FOREIGN KEY (uploaded_by) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS classroom_personal_notes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        course_id INT NOT NULL,
+        student_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        content LONGTEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_classroom_personal_notes_course_student (course_id, student_id),
+        CONSTRAINT fk_classroom_personal_notes_course FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_personal_notes_student FOREIGN KEY (student_id) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS classroom_exams (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        course_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        instructions TEXT,
+        duration_minutes INT NOT NULL,
+        start_time DATETIME NOT NULL,
+        end_time DATETIME NOT NULL,
+        total_marks DECIMAL(10,2) NOT NULL,
+        questions_json LONGTEXT NOT NULL,
+        created_by INT NOT NULL,
+        status ENUM('draft', 'published', 'ongoing', 'ended') NOT NULL DEFAULT 'draft',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_classroom_exams_course_time (course_id, start_time, end_time),
+        INDEX idx_classroom_exams_course_status (course_id, status),
+        CONSTRAINT fk_classroom_exams_course FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_exams_creator FOREIGN KEY (created_by) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS classroom_exam_submissions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        exam_id INT NOT NULL,
+        student_id INT NOT NULL,
+        answers_json LONGTEXT,
+        score DECIMAL(10,2) DEFAULT NULL,
+        total_marks DECIMAL(10,2) DEFAULT NULL,
+        started_at DATETIME DEFAULT NULL,
+        submitted_at DATETIME DEFAULT NULL,
+        is_graded TINYINT(1) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_classroom_exam_submission (exam_id, student_id),
+        INDEX idx_classroom_exam_submissions_exam (exam_id, submitted_at),
+        CONSTRAINT fk_classroom_exam_submissions_exam FOREIGN KEY (exam_id) REFERENCES classroom_exams(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_exam_submissions_student FOREIGN KEY (student_id) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS classroom_schedule_sessions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        course_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        type ENUM('lecture', 'lab', 'tutorial', 'exam', 'holiday') NOT NULL,
+        start_datetime DATETIME NOT NULL,
+        end_datetime DATETIME NOT NULL,
+        meeting_link VARCHAR(600) DEFAULT NULL,
+        location VARCHAR(255) DEFAULT NULL,
+        status ENUM('scheduled', 'ongoing', 'completed', 'cancelled') NOT NULL DEFAULT 'scheduled',
+        is_recurring TINYINT(1) NOT NULL DEFAULT 0,
+        recurrence_rule VARCHAR(255) DEFAULT NULL,
+        created_by INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_classroom_schedule_course_start (course_id, start_datetime),
+        INDEX idx_classroom_schedule_course_status (course_id, status),
+        CONSTRAINT fk_classroom_schedule_course FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_schedule_creator FOREIGN KEY (created_by) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS classroom_assignments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        course_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        due_date DATETIME NOT NULL,
+        total_marks DECIMAL(10,2) NOT NULL,
+        attachment_url VARCHAR(600) DEFAULT NULL,
+        allow_late_submission TINYINT(1) NOT NULL DEFAULT 0,
+        created_by INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_classroom_assignments_course_due (course_id, due_date),
+        CONSTRAINT fk_classroom_assignments_course FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_assignments_creator FOREIGN KEY (created_by) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS classroom_assignment_submissions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        assignment_id INT NOT NULL,
+        student_id INT NOT NULL,
+        file_url VARCHAR(600) NOT NULL,
+        comment TEXT,
+        submitted_at DATETIME NOT NULL,
+        is_late TINYINT(1) NOT NULL DEFAULT 0,
+        score DECIMAL(10,2) DEFAULT NULL,
+        feedback TEXT,
+        graded_at DATETIME DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_classroom_assignment_submission (assignment_id, student_id),
+        INDEX idx_classroom_assignment_submissions_assignment (assignment_id, submitted_at),
+        CONSTRAINT fk_classroom_assignment_submissions_assignment FOREIGN KEY (assignment_id) REFERENCES classroom_assignments(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_assignment_submissions_student FOREIGN KEY (student_id) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS classroom_session_attendance (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        course_id INT NOT NULL,
+        session_id INT NOT NULL,
+        student_id INT NOT NULL,
+        status ENUM('present', 'absent', 'late') NOT NULL,
+        marked_by INT NOT NULL,
+        marked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_classroom_session_attendance (session_id, student_id),
+        INDEX idx_classroom_session_attendance_course_student (course_id, student_id, marked_at),
+        CONSTRAINT fk_classroom_session_attendance_course FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_session_attendance_session FOREIGN KEY (session_id) REFERENCES classroom_schedule_sessions(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_session_attendance_student FOREIGN KEY (student_id) REFERENCES edu_users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_classroom_session_attendance_marker FOREIGN KEY (marked_by) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
   })().catch((error) => {
     classroomSchemaInitPromise = null;
     throw error;
