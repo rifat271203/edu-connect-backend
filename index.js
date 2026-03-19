@@ -2,7 +2,6 @@ const db = require('./db');
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
-const path = require('path')
 const http = require('http')
 const { Server } = require('socket.io')
 const { registerMeetingSignaling } = require('./sockets/meetingSignaling')
@@ -87,7 +86,6 @@ app.use(cors({
 }))
 app.use(express.json({ limit: '1mb' }))
 app.use(createRateLimiter({ windowMs: 60 * 1000, max: 120, message: 'Too many requests from this IP' }))
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
 const authRateLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 25, message: 'Too many auth attempts' })
 const chatRateLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 40, message: 'Too many chat requests' })

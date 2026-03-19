@@ -1,10 +1,10 @@
 const express = require('express');
-const path = require('path');
-const fs = require('fs-extra');
 const multer = require('multer');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const eduAuthMiddleware = require('../middleware/eduAuthMiddleware');
 const { runQuery, ensureEduSchema } = require('../utils/eduSchema');
-const { buildPublicFileUrl, isSafeHttpUrl, createRateLimiter } = require('../utils/security');
+const { isSafeHttpUrl, createRateLimiter } = require('../utils/security');
+const { cloudinary } = require('../config/cloudinary.config');
 
 const router = express.Router();
 
@@ -93,8 +93,6 @@ async function getOrCreateDmConversation(userAId, userBId) {
   return rows[0] || null;
 }
 
-const SOCIAL_UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'social');
-const PROFILE_UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'profiles');
 const MAX_MEDIA_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
 const MAX_PROFILE_PIC_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_MIME_TYPES = new Set([
@@ -105,43 +103,21 @@ const ALLOWED_MIME_TYPES = new Set([
   'video/mp4',
   'video/quicktime',
   'video/webm',
-  'video/x-matroska',
 ]);
 const ALLOWED_PROFILE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
-function getExtensionFromMime(mimeType = '') {
-  const map = {
-    'image/jpeg': '.jpg',
-    'image/png': '.png',
-    'image/webp': '.webp',
-    'image/gif': '.gif',
-    'video/mp4': '.mp4',
-    'video/quicktime': '.mov',
-    'video/webm': '.webm',
-    'video/x-matroska': '.mkv',
-  };
-
-  return map[mimeType] || '';
+function createMediaPublicId(prefix = 'media') {
+  return `${prefix}-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 }
 
-function createMediaFilename(file) {
-  const originalExt = path.extname(file.originalname || '').toLowerCase();
-  const ext = originalExt || getExtensionFromMime(file.mimetype) || '.bin';
-  return `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
-}
-
-const mediaStorage = multer.diskStorage({
-  destination: async (req, file, cb) => {
-    try {
-      await fs.ensureDir(SOCIAL_UPLOAD_DIR);
-      cb(null, SOCIAL_UPLOAD_DIR);
-    } catch (error) {
-      cb(error);
-    }
-  },
-  filename: (req, file, cb) => {
-    cb(null, createMediaFilename(file));
-  },
+const mediaStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async () => ({
+    folder: 'educonnect/social',
+    resource_type: 'auto',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'mov', 'webm'],
+    public_id: createMediaPublicId('social'),
+  }),
 });
 
 const uploadMediaMiddleware = multer({
@@ -149,25 +125,21 @@ const uploadMediaMiddleware = multer({
   limits: { fileSize: MAX_MEDIA_SIZE_BYTES },
   fileFilter: (req, file, cb) => {
     if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
-      return cb(new Error('Only image/jpeg, image/png, image/webp, image/gif, video/mp4, video/quicktime, video/webm or video/x-matroska files are allowed'));
+      return cb(new Error('Only image/jpeg, image/png, image/webp, image/gif, video/mp4, video/quicktime or video/webm files are allowed'));
     }
 
     return cb(null, true);
   },
 }).single('media');
 
-const profilePicStorage = multer.diskStorage({
-  destination: async (req, file, cb) => {
-    try {
-      await fs.ensureDir(PROFILE_UPLOAD_DIR);
-      cb(null, PROFILE_UPLOAD_DIR);
-    } catch (error) {
-      cb(error);
-    }
-  },
-  filename: (req, file, cb) => {
-    cb(null, createMediaFilename(file));
-  },
+const profilePicStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async () => ({
+    folder: 'educonnect/profiles',
+    resource_type: 'image',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
+    public_id: createMediaPublicId('profile'),
+  }),
 });
 
 const uploadProfilePicMiddleware = multer({
@@ -181,14 +153,6 @@ const uploadProfilePicMiddleware = multer({
     return cb(null, true);
   },
 }).single('profilePic');
-
-function buildMediaUrl(req, filename) {
-  return buildPublicFileUrl(req, `uploads/social/${filename}`);
-}
-
-function buildProfilePicUrl(req, filename) {
-  return buildPublicFileUrl(req, `uploads/profiles/${filename}`);
-}
 
 function sanitizeOptionalText(value, { maxLen = 5000 } = {}) {
   if (value === undefined || value === null) return null;
@@ -242,14 +206,20 @@ router.post('/upload-media', socialMutationRateLimiter, (req, res) => {
       return res.status(400).json({ message: "File field 'media' is required" });
     }
 
+    const mediaUrl = req.file.path || req.file.secure_url;
+    if (!mediaUrl) {
+      return res.status(500).json({ message: 'Cloudinary upload succeeded but URL was not returned' });
+    }
+
     const mediaType = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
 
     return res.status(201).json({
       message: 'Media uploaded',
-      mediaUrl: buildMediaUrl(req, req.file.filename),
+      media_url: mediaUrl,
+      mediaUrl: mediaUrl,
       mediaType,
       mimeType: req.file.mimetype,
-      size: req.file.size,
+      size: req.file.size || req.file.bytes,
     });
   });
 });
@@ -269,7 +239,11 @@ router.post('/me/profile-pic', socialMutationRateLimiter, (req, res) => {
     }
 
     try {
-      const profilePicUrl = buildProfilePicUrl(req, req.file.filename);
+      const profilePicUrl = req.file.path || req.file.secure_url;
+      if (!profilePicUrl) {
+        return res.status(500).json({ message: 'Cloudinary upload succeeded but URL was not returned' });
+      }
+
       await runQuery('UPDATE edu_users SET profile_pic_url = ? WHERE id = ?', [profilePicUrl, req.user.id]);
 
       const users = await runQuery(
@@ -281,6 +255,7 @@ router.post('/me/profile-pic', socialMutationRateLimiter, (req, res) => {
 
       return res.status(200).json({
         message: 'Profile picture updated',
+        profile_pic_url: profilePicUrl,
         profilePicUrl,
         user: users[0],
       });
