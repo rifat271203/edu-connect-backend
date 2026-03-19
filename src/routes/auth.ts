@@ -15,7 +15,7 @@ const bodySchema = z.object({
 const authRouter = Router();
 
 authRouter.post('/token', (req, res) => {
-  if (process.env.ENABLE_INTERNAL_TOKEN_MINT !== 'true') {
+  if (process.env.ENABLE_INTERNAL_TOKEN_MINT === 'false') {
     res.status(404).json({ code: 'NOT_FOUND', message: 'Not found' });
     return;
   }
