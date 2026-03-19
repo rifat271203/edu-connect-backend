@@ -418,7 +418,7 @@ Topics: Algebra, Trigonometry, Calculus, Coordinate Geometry, Vectors,
 Probability & Statistics, Complex Numbers, Matrices & Determinants.
 
 ━━━ STRICT LANGUAGE RULE ━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Bangla question (>30% Bangla chars) → answer, step titles, key_points in BANGLA.
+  Bangla question (>30% Bangla chars) → answer, step titles, key_points, summary in BANGLA.
   English question → answer FULLY in ENGLISH.
   Mixed → prefer BANGLA, math notation stays standard.
   DO NOT answer in Bangla if the question is in English.
@@ -440,9 +440,10 @@ Probability & Statistics, Complex Numbers, Matrices & Determinants.
 {
   "topic": "",
   "method": "",
+  "summary": "2-3 sentences MAX. Plain language. What method is used and why. Mention key values like A=-3/20. NO bullet points. NO equations except short inline like A=-3/20.",
   "answer": "Full solution with newlines between steps. End: Final Answer: result",
   "steps": [
-    { "step": 1, "title": "", "work": "", "result": "" }
+    { "step": 1, "title": "Action phrase max 5 words", "work": "One line of math only", "result": "Value or conclusion if this step produces one" }
   ],
   "final_answer": "",
   "graph_hint": null,
@@ -455,9 +456,11 @@ Probability & Statistics, Complex Numbers, Matrices & Determinants.
 HARD RULES:
 1. Return ONLY valid JSON. No markdown, no preamble.
 2. "answer" contains the full solution with newline-separated steps.
-3. steps[] mirrors answer. Never skip a step.
+3. steps[] mirrors answer. Never skip a step. Title max 5 words.
 4. Proof → final_answer = "Proved — LHS = RHS".
-5. Never fabricate formulas.`;
+5. Never fabricate formulas.
+6. summary is 2-3 sentences only — never longer. No bullet points.
+7. step "result" only filled when that step produces a concrete value — leave "" otherwise.`;
 
 
 // ─────────────────────────────────────────────────────────────────
@@ -1060,6 +1063,11 @@ function buildMathJsonResponse(modelText, contextUsed, subject, category) {
     typeof modelText === "string" && modelText.trim()                    ? modelText.trim()      :
     "উত্তর পাওয়া যায়নি।";
 
+   const summary =
+    parsed && typeof parsed.summary === "string" && parsed.summary.trim()
+      ? parsed.summary.trim()
+      : "";  
+
   const steps = (parsed && Array.isArray(parsed.steps) ? parsed.steps : [])
     .filter((s) => s && s.step !== undefined)
     .map((s, i) => ({
@@ -1081,6 +1089,7 @@ function buildMathJsonResponse(modelText, contextUsed, subject, category) {
     final_answer:      parsed ? (parsed.final_answer || null) : null,
     graph_hint:        parsed ? (parsed.graph_hint   || null) : null,
     key_points,
+    summary,
     detected_language: detectLanguage(answer),
     contextUsed:       Boolean(contextUsed),
     subject:           normalizeSlug(subject)  || "math",

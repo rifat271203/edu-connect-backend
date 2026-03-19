@@ -90,8 +90,16 @@ function deriveCategoryFromPath(filePath) {
 }
 
 function buildSearchableText(obj) {
+  // Check for direct text field
   const directText = (obj.text || "").trim();
   if (directText) return directText;
+
+  // Check for question and solution fields (common in problem_solution entries)
+  const question = (obj.question || "").trim();
+  const solution = (obj.solution || "").trim();
+  if (question || solution) {
+    return [question, solution].filter(Boolean).join("\nSolution: ").trim();
+  }
 
   const parts = [];
   if (obj.topic_en) parts.push(obj.topic_en);
