@@ -222,181 +222,134 @@ function classifyQuestionMode(question) {
 // ═══════════════════════════════════════════════════════════════════
 
 // ─────────────────────────────────────────────────────────────────
-// CHEMISTRY SYSTEM PROMPT
+// CHEMISTRY SYSTEM PROMPT — Optimized for Frontend UI
 // Two modes injected at runtime:
 //   MODE A — CONVERSION  : full diagram + mechanism + steps
 //   MODE B — DESCRIPTION : explanation + relevant equations only
 // ─────────────────────────────────────────────────────────────────
-const CHEMISTRY_SYSTEM_PROMPT_BASE = `You are an expert Bangladesh HSC Chemistry tutor (1st and 2nd Paper).
-You specialize in Organic Chemistry, Physical Chemistry, and Inorganic Chemistry at HSC level.
+const CHEMISTRY_SYSTEM_PROMPT_BASE = `You are an expert Bangladesh HSC Chemistry tutor specializing in Organic, Physical, and Inorganic Chemistry (1st & 2nd Paper).
 
-━━━ STRICT LANGUAGE RULE ━━━━━━━━━━━━━━━━━━━━━━━━━━
-YOU MUST FOLLOW THIS EXACTLY — NO EXCEPTIONS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ LANGUAGE RULE (STRICT - APPLY ALWAYS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  IF the question contains MOSTLY BANGLA text (>30% Bangla unicode characters):
-    → Write "answer", mechanism desc, key_points FULLY IN BANGLA.
-    → Keep chemistry terms in English inside parentheses: "বেনজিন (benzene)"
-    → Example: "নাইট্রেশন বিক্রিয়ায় (nitration) বেনজিন ..."
+IF >30% Bangla characters in question:
+  • overview.text, step descriptions, key_points → FULLY BANGLA
+  • Chemistry terms → English in parentheses: "নাইট্রেশন (nitration)"
 
-  IF the question is in ENGLISH or is a chemical formula/equation:
-    → Write EVERYTHING in ENGLISH.
-    → Do NOT switch to Bangla even partially.
+ELSE IF <10% Bangla characters (mostly English or formula):
+  • ALL output → ENGLISH
+  • Do NOT use Bangla
 
-  IF the question is mixed (some Bangla + some English):
-    → Answer in BANGLA, keep chemistry terms in English in ().
+ELSE (10-30% mixed):
+  • PRIMARY: Bangla
+  • Chemistry terms: English in ()
 
-  JSON keys, SMILES strings, field names → ALWAYS in English regardless.
-  "subject" and "category" fields → ALWAYS "chemistry".
+JSON keys, SMILES, formulas → ALWAYS English.
 
-━━━ INTERNAL REASONING (do silently) ━━━━━━━━━━━━━━
-STEP 1 — Classify:
-  reaction_type: conversion_reaction | aromatic_substitution | addition_reaction |
-                 elimination_reaction | oxidation_reduction | rearrangement |
-                 resonance_concept | acid_base | conceptual_theory | unknown
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ CLASSIFICATION (do silently)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  question_mode: EITHER "conversion" OR "description"
-    conversion  → student wants a reaction, equation, mechanism, or product
-    description → student wants a definition, explanation, property, or concept
+CONVERSION signals: "X to Y", "mechanism", "prepare", "product when", "reaction of"
+DESCRIPTION signals: "What is", "Why is", "Define", "Properties", "Explain"
 
-STEP 2 — Identify substrate_class:
-  aromatic | aliphatic | alkene | alkyne | alcohol | acid |
-  aldehyde | ketone | ester | amine | halide | unknown
+STEP 1: Determine question_mode, is_conversion, reaction_type, substrate_class, carbon_change
+STEP 2: Generate appropriate output structure (see below)
 
-STEP 3 — Track carbon_change:
-  carbon_increase | carbon_decrease | carbon_same | unknown
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ CRITICAL: NEW FRONTEND-OPTIMIZED OUTPUT STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {{MODE_INSTRUCTION}}
 
-VERIFIED SMILES — use ONLY these exact strings:
-  benzene       → c1ccccc1       toluene      → Cc1ccccc1
-  phenol        → Oc1ccccc1      aniline      → Nc1ccccc1
-  nitrobenzene  → O=[N+]([O-])c1ccccc1        chlorobenzene → Clc1ccccc1
-  bromobenzene  → Brc1ccccc1     naphthalene  → c1ccc2ccccc2c1
-  ethene        → C=C            propene      → CC=C
-  ethyne        → C#C            methane      → C
-  ethane        → CC             propane      → CCC
-  ethanol       → CCO            methanol     → CO
-  acetic acid   → CC(=O)O        methanal     → C=O
-  ethanal       → CC=O           acetone      → CC(C)=O
-  HCl → Cl      HBr → Br         Br2 → BrBr   Cl2 → ClCl
-  H2SO4 → OS(=O)(=O)O           HNO3 → O[N+](=O)[O-]
-  NaOH → [Na+].[OH-]            H2O → O
-  CO2 → O=C=O   NH3 → N         O3 → [O-][O+]=O
-  Unknown molecule → smiles: ""
-
-━━━ HARD RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. Return ONLY valid JSON. No text before/after. No markdown fences.
-2. "answer" must be a real paragraph, NEVER a bullet list.
-3. Reactants come ONLY from the student question, never from your training data.
-4. If product is uncertain → products: []
-5. key_points must have exactly 3 items about this specific question.
-6. Unknown SMILES → use "" not a guessed string.
-7. is_conversion MUST match question_mode: true for conversion, false for description.`;
+ALL OUTPUT MUST BE:
+  ✓ Valid JSON only (no markdown, no fences)
+  ✓ overview.text: narrative paragraph (NOT bullets)
+  ✓ tags: array with 4-6 items
+  ✓ reaction_pathway: for conversion only (null for description)
+  ✓ steps: 2-4 for conversion, 1-3 for description
+  ✓ key_points: exactly 3 items
+  ✓ All molecules with valid SMILES or ""
+  ✓ subject: "chemistry", category: "chemistry"`;
 
 // Injected for CONVERSION questions
 const CONVERSION_MODE_INSTRUCTION = `━━━ MODE: CONVERSION REACTION ━━━━━━━━━━━━━━━━━━━
-This is a CONVERSION / REACTION question. The student wants to know:
-how a reaction happens, what product forms, or the mechanism.
+Output: Full reaction breakdown with steps & equations
 
-STEP 4 — Write answer (8 to 14 lines) covering:
-  • What reaction occurs and what product forms
-  • Why it occurs (electronic reason: inductive/resonance effect etc.)
-  • Role of each reagent
-  • Conditions (temperature, catalyst, pressure)
-  • Markovnikov/anti-Markovnikov if alkene addition
-  • o/p or m-directing if aromatic substitution
-  • If carbon count changes, explain why
-
-STEP 5 — Build SMILES diagram:
-  reactants: ONLY molecules named in the question
-  reagents:  ONLY mentioned OR standard for this reaction type
-  products:  ONLY actual products of this reaction
-  NEVER invent molecules. Unknown SMILES → ""
-
-STEP 6 — Build mechanism_steps (REQUIRED for conversion):
-  Always include 2–4 mechanism steps for conversion reactions.
-  Each step: title (short), desc (2–3 sentences in detected language),
-  structures (relevant molecules for that step)
-
-OUTPUT JSON:
 {
   "question_mode": "conversion",
   "is_conversion": true,
-  "reaction_type": "",
-  "substrate_class": "",
-  "carbon_change": "",
-  "answer": "8–14 line explanation in detected language",
-  "diagram": {
-    "reactants": [{ "name": "", "smiles": "" }],
-    "reagents":  [{ "name": "", "smiles": "" }],
-    "conditions": "",
-    "products":  [{ "name": "", "smiles": "", "type": "major|minor|possible" }]
+  "metadata": {
+    "reaction_type": "aromatic_substitution | oxidation | addition | ...",
+    "substrate_class": "aromatic | aliphatic | alkene | ...",
+    "carbon_change": "carbon_increase | carbon_decrease | carbon_same",
+    "difficulty_level": "basic | intermediate | advanced",
+    "context_used": true/false
   },
-  "diagram_caption": "One sentence: what reaction is shown.",
-  "mechanism_steps": [
-    { "step": 1, "title": "", "desc": "", "structures": [{ "name": "", "smiles": "" }] }
+  "tags": ["Chemistry", "conversion", "reaction_type", "key_concept", "context used?"],
+  "overview": {
+    "title": "Brief title (6 words max)",
+    "text": "8-14 sentence narrative paragraph explaining entire conversion strategy"
+  },
+  "reaction_pathway": {
+    "compounds": [
+      { "name": "benzene", "role": "reactant", "smiles": "c1ccccc1", "svg_type": "benzene_ring", "display_formula": "C₆H₆" },
+      { "name": "HNO3", "role": "reagent", "formula": "HNO3" },
+      { "name": "nitrobenzene", "role": "product", "smiles": "O=[N+]([O-])c1ccccc1", "svg_type": "benzene_ring_with_no2", "display_formula": "C₆H₅NO₂" }
+    ]
+  },
+  "steps": [
+    {
+      "step_num": 1,
+      "title": "Step Title (5 words max)",
+      "subtitle": "Reactant → Product",
+      "description": "3-5 sentences describing this step",
+      "molecules": [{ "name": "...", "role": "...", "smiles": "...", "svg_type": "..." }],
+      "conditions": "heating, conc. H2SO4",
+      "mechanism_type": "electrophilic_aromatic_substitution"
+    }
   ],
-  "equations": [],
-  "key_points": ["tip 1", "tip 2", "common mistake"],
-  "resonance": null,
-  "contextUsed": false,
+  "equations": ["C₆H₆ + HNO₃ → C₆H₅NO₂ + H₂O"],
+  "key_points": ["Tip 1 about mechanism", "Tip 2 about selectivity", "Tip 3 common mistake"],
+  "related_concepts": ["Concept 1", "Concept 2"],
   "subject": "chemistry",
   "category": "chemistry"
 }`;
 
-// Injected for DESCRIPTION questions
-const DESCRIPTION_MODE_INSTRUCTION = `━━━ MODE: DESCRIPTION / CONCEPT QUESTION ━━━━━━━━━
-This is a DESCRIPTION question. The student wants an explanation,
-definition, property, or conceptual understanding — NOT a reaction.
+// Injected for DESCRIPTION questions  
+const DESCRIPTION_MODE_INSTRUCTION = `━━━ MODE: DESCRIPTION / CONCEPT ━━━━━━━━━━━━━━━━━━━
+Output: Conceptual explanation without reaction pathway
 
-STEP 4 — Write answer (10 to 18 lines) covering:
-  • Clear definition or explanation of the concept
-  • Physical/chemical properties if relevant
-  • Electronic explanation (bonding, hybridization, resonance) if helpful
-  • Real examples from HSC syllabus
-  • Comparison or contrast if the question asks for it
-  • Do NOT force a reaction mechanism unless the concept itself IS a mechanism
-
-STEP 5 — Equations (OPTIONAL — only if they aid explanation):
-  If the concept involves a chemical equation (e.g., explaining acidity of phenol,
-  explaining resonance, explaining a property by an example reaction):
-  → Add 1–3 short equations in the "equations" array as plain text strings.
-  → Example: "C6H5OH + NaOH → C6H5ONa + H2O"
-  → If no equation is needed → equations: []
-
-STEP 6 — Diagram (OPTIONAL — only if a structure aids explanation):
-  If showing a molecular structure helps (e.g., benzene structure for aromaticity):
-  → Populate diagram.reactants with that molecule only.
-  → Keep diagram.reagents: [], diagram.products: [], diagram.conditions: ""
-  → If no structure is needed → leave all diagram arrays empty.
-
-STEP 7 — mechanism_steps:
-  → ALWAYS set mechanism_steps: []  for description questions.
-  → Do NOT add mechanism steps for descriptions.
-
-OUTPUT JSON:
 {
   "question_mode": "description",
   "is_conversion": false,
-  "reaction_type": "conceptual_theory",
-  "substrate_class": "",
-  "carbon_change": "unknown",
-  "answer": "10–18 line conceptual explanation in detected language",
-  "diagram": {
-    "reactants": [],
-    "reagents":  [],
-    "conditions": "",
-    "products":  []
+  "metadata": {
+    "reaction_type": "conceptual_theory",
+    "substrate_class": "phenol | aromatic | etc",
+    "carbon_change": "unknown",
+    "difficulty_level": "basic | intermediate | advanced",
+    "context_used": true/false
   },
-  "diagram_caption": "",
-  "mechanism_steps": [],
-  "equations": [
-    "Optional: C6H5OH + NaOH → C6H5ONa + H2O",
-    "Only if an equation genuinely aids the explanation"
+  "tags": ["Chemistry", "description", "topic", "key_concept", "context used?"],
+  "overview": {
+    "title": "Concept Title",
+    "text": "10-18 sentence comprehensive explanation of the concept"
+  },
+  "reaction_pathway": null,
+  "steps": [
+    {
+      "step_num": 1,
+      "title": "Aspect of Concept",
+      "subtitle": "Focus area",
+      "description": "2-4 sentences explaining this aspect",
+      "molecules": [{ "name": "phenol", "role": "example", "smiles": "Oc1ccccc1", "svg_type": "phenol_structure" }],
+      "mechanism_type": "description_only"
+    }
   ],
-  "key_points": ["tip 1", "tip 2", "common mistake"],
-  "resonance": null,
-  "contextUsed": false,
+  "equations": ["C₆H₅OH + NaOH → C₆H₅ONa + H₂O"],
+  "key_points": ["Insight 1", "Insight 2", "Insight 3"],
+  "related_concepts": ["Concept 1", "Concept 2"],
   "subject": "chemistry",
   "category": "chemistry"
 }`;
@@ -956,102 +909,198 @@ function syncNarrativeWithDiagram(question, response) {
 // ═══════════════════════════════════════════════════════════════════
 
 // ── Chemistry ──────────────────────────────────────────────────────
-function buildChemistryJsonResponse(modelText, context, contextUsed, question, isConversionHint) {
-  const parsed      = safeParseJsonObject(modelText);
+// ═════════════════════════════════════════════════════════════════════
+// HELPER: Build tags array for frontend
+// ═════════════════════════════════════════════════════════════════════
+function buildChemistryTags(isConversion, reactionType, topicKeywords, contextUsed, parsed) {
+  const tags = ["Chemistry"];
+  tags.push(isConversion ? "conversion" : "description");
+  
+  if (reactionType && typeof reactionType === "string") {
+    const cleanType = reactionType.toLowerCase().replace(/_/g, " ");
+    tags.push(cleanType);
+  }
+  
+  // Extract keywords from parsed response if available
+  if (parsed && typeof parsed === "object") {
+    if (parsed.substrate_class && !tags.includes(parsed.substrate_class)) {
+      tags.push(parsed.substrate_class.toLowerCase().replace(/_/g, " "));
+    }
+    if (parsed.related_concepts && Array.isArray(parsed.related_concepts)) {
+      parsed.related_concepts.slice(0, 1).forEach(concept => {
+        if (concept && !tags.includes(concept)) tags.push(concept);
+      });
+    }
+  }
+  
+  if (topicKeywords && Array.isArray(topicKeywords)) {
+    topicKeywords.slice(0, 2).forEach(kw => {
+      if (kw && !tags.includes(kw)) tags.push(kw);
+    });
+  }
+  
+  if (contextUsed) tags.push("context used");
+  
+  return tags.slice(0, 6);
+}
 
-  // ── Determine is_conversion from LLM response OR our pre-classification hint
-  // LLM has final say; our hint is the fallback.
+// ═════════════════════════════════════════════════════════════════════
+// HELPER: Build overview object
+// ═════════════════════════════════════════════════════════════════════
+function buildChemistryOverview(parsed, isConversion) {
+  if (!parsed) return { title: "", text: "" };
+  
+  const title = parsed.overview && typeof parsed.overview.title === "string" 
+    ? parsed.overview.title.trim().slice(0, 100)
+    : (isConversion ? "Reaction Overview" : "Concept Explanation");
+    
+  const text = parsed.overview && typeof parsed.overview.text === "string"
+    ? parsed.overview.text.trim()
+    : (parsed.answer ? String(parsed.answer).slice(0, 500) : "");
+    
+  return { title, text };
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// HELPER: Build reaction_pathway object for frontend
+// ═════════════════════════════════════════════════════════════════════
+function buildChemistryReactionPathway(parsed, isConversion) {
+  if (!isConversion || !parsed || !parsed.reaction_pathway) return null;
+  
+  const compounds = Array.isArray(parsed.reaction_pathway.compounds)
+    ? parsed.reaction_pathway.compounds.map(c => ({
+        name: c.name || "",
+        role: c.role || "reactant",
+        smiles: c.smiles || c.formula || "",
+        svg_type: c.svg_type || "custom_structure",
+        display_formula: c.display_formula || c.formula || ""
+      }))
+    : [];
+    
+  return { compounds };
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// HELPER: Build steps array with proper structure for frontend
+// ═════════════════════════════════════════════════════════════════════
+function buildChemistrySteps(parsed, isConversion) {
+  if (!parsed || !Array.isArray(parsed.steps)) return [];
+  
+  return parsed.steps.map((step, idx) => ({
+    step_num: step.step_num || idx + 1,
+    title: step.title || `Step ${idx + 1}`,
+    subtitle: step.subtitle || "",
+    description: step.description || step.desc || "",
+    molecules: Array.isArray(step.molecules) ? step.molecules.map(m => ({
+      name: m.name || "",
+      role: m.role || "reactant",
+      smiles: m.smiles || "",
+      svg_type: m.svg_type || "custom_structure",
+      formula: m.formula || ""
+    })) : [],
+    conditions: step.conditions || "",
+    mechanism_type: step.mechanism_type || (isConversion ? "unknown" : "description_only")
+  })).slice(0, 4);
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// HELPER: Validate chemistry response structure
+// ═════════════════════════════════════════════════════════════════════
+function validateChemistryResponse(response) {
+  const checks = [
+    response.question_mode && (response.question_mode === "conversion" || response.question_mode === "description"),
+    response.is_conversion === (response.question_mode === "conversion"),
+    Array.isArray(response.tags) && response.tags.length >= 4 && response.tags.length <= 6,
+    response.overview && typeof response.overview.text === "string" && response.overview.text.length > 50,
+    Array.isArray(response.steps) && response.steps.length >= 1,
+    Array.isArray(response.key_points) && response.key_points.length === 3,
+    response.subject === "chemistry",
+    response.category === "chemistry"
+  ];
+  
+  return checks.every(c => c === true);
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// MAIN: buildChemistryJsonResponse - Updated for Frontend Schema
+// ═════════════════════════════════════════════════════════════════════
+function buildChemistryJsonResponse(modelText, context, contextUsed, question, isConversionHint) {
+  const parsed = safeParseJsonObject(modelText);
+
+  // ── Determine is_conversion
   const llmIsConversion =
     parsed && typeof parsed.is_conversion === "boolean"
       ? parsed.is_conversion
       : (parsed && parsed.question_mode === "conversion") || Boolean(isConversionHint);
 
   const isConversion = llmIsConversion;
+  const lang = detectLanguage(question);
 
-  // ── Build diagram (for conversion) or minimal structure (for description)
-  const fallbackDiag  = isConversion
-    ? buildChemDiagram(question, modelText)
-    : { reactants: [], reagents: [], conditions: "", products: [] };
-
-  const diagramInput  = (parsed && parsed.diagram && typeof parsed.diagram === "object") ? parsed.diagram : {};
-
-  const diagram = {
-    reactants:  sanitizeMoleculeArray(diagramInput.reactants, fallbackDiag.reactants),
-    reagents:   sanitizeMoleculeArray(diagramInput.reagents,  fallbackDiag.reagents),
-    conditions: String(diagramInput.conditions || fallbackDiag.conditions || ""),
-    products:   sanitizeMoleculeArray(diagramInput.products,  fallbackDiag.products, true),
+  // ── CORE FIELDS ────────────────────────────────────────────────
+  const question_mode = isConversion ? "conversion" : "description";
+  
+  const metadata = {
+    reaction_type: parsed?.reaction_type || "unknown",
+    substrate_class: parsed?.substrate_class || "",
+    carbon_change: parsed?.carbon_change || "unknown",
+    difficulty_level: parsed?.metadata?.difficulty_level || "intermediate",
+    context_used: Boolean(contextUsed)
   };
 
-  // Only sanitize by question context for conversion questions
-  const processedDiag = isConversion
-    ? applyOzonolysisOverrides(question, sanitizeDiagramByQuestion(diagram, question, modelText))
-    : diagram;
+  const tags = buildChemistryTags(isConversion, metadata.reaction_type, [], contextUsed, parsed);
+  const overview = buildChemistryOverview(parsed, isConversion);
+  const reaction_pathway = buildChemistryReactionPathway(parsed, isConversion);
+  const steps = buildChemistrySteps(parsed, isConversion);
 
-  // ── mechanism_steps: ONLY for conversion; always [] for description
-  const mechanism_steps = isConversion
-    ? sanitizeMechanismSteps(
-        parsed ? parsed.mechanism_steps : null,
-        buildMechanismSteps(modelText, context, processedDiag)
-      )
-    : [];
+  // ── EQUATIONS ──────────────────────────────────────────────────
+  const equations = (parsed?.equations || [])
+    .filter(e => typeof e === "string" && e.trim())
+    .slice(0, 3);
 
-  // ── equations: plain-text equations array (mainly for description)
-  const equations = (parsed && Array.isArray(parsed.equations) ? parsed.equations : [])
-    .filter((e) => typeof e === "string" && e.trim())
-    .slice(0, 5);
+  // ── KEY POINTS (always exactly 3) ──────────────────────────────
+  const key_points = (parsed?.key_points || [])
+    .filter(k => typeof k === "string" && k.trim())
+    .slice(0, 3);
+  
+  while (key_points.length < 3) {
+    key_points.push("Important point");
+  }
 
-  const rawAnswer =
-    parsed && typeof parsed.answer === "string" && parsed.answer.trim() ? parsed.answer.trim() :
-    typeof modelText === "string" && modelText.trim()                    ? modelText.trim()      :
-    "উত্তর পাওয়া যায়নি।";
+  // ── RELATED CONCEPTS ───────────────────────────────────────────
+  const related_concepts = (parsed?.related_concepts || [])
+    .filter(c => typeof c === "string" && c.trim())
+    .slice(0, 3);
 
-  const answer         = enrichAnswerIfTooShort(rawAnswer, question, context);
-  const diagram_caption =
-    parsed && typeof parsed.diagram_caption === "string" && parsed.diagram_caption.trim()
-      ? parsed.diagram_caption.trim()
-      : processedDiag.products && processedDiag.products.length
-        ? "Skeletal reaction diagram (SMILES)."
-        : "";
-
-  const key_points = (parsed && Array.isArray(parsed.key_points) ? parsed.key_points : [])
-    .filter((k) => typeof k === "string" && k.trim())
-    .slice(0, 4);
-
-  let out = {
-    // ── NEW fields for frontend ──────────────────────────────────
-    is_conversion:    isConversion,          // boolean — use this on frontend to decide UI mode
-    question_mode:    isConversion ? "conversion" : "description",
-
-    // ── Core answer ──────────────────────────────────────────────
-    answer,
-    reaction_type:   parsed ? (parsed.reaction_type   || null) : null,
-    substrate_class: parsed ? (parsed.substrate_class || null) : null,
-    carbon_change:   parsed ? (parsed.carbon_change   || null) : null,
-
-    // ── Diagram (conversion: full; description: structure only if needed) ──
-    diagram:          processedDiag,
-    diagram_caption,
-
-    // ── Mechanism (conversion only; [] for description) ──────────
-    mechanism_steps,
-
-    // ── Equations (description mainly; can also appear in conversion) ──
-    equations,        // NEW — plain text equations like "C6H6 + HNO3 → C6H5NO2 + H2O"
-
-    // ── HSC tips ─────────────────────────────────────────────────
+  // ── BUILD FINAL RESPONSE ───────────────────────────────────────
+  const response = {
+    question_mode,
+    is_conversion: isConversion,
+    
+    metadata,
+    tags,
+    overview,
+    reaction_pathway,
+    steps,
+    
+    equations,
     key_points,
-
-    // ── Resonance (only if question asks for it) ──────────────────
-    resonance:        buildResonanceBlock(question),
-
-    // ── Meta ─────────────────────────────────────────────────────
-    detected_language: detectLanguage(question),
-    contextUsed:       Boolean(contextUsed),
-    subject:  "chemistry",
+    related_concepts,
+    
+    subject: "chemistry",
     category: "chemistry",
+    
+    // Backward compatibility
+    answer: overview.text || "",
+    contextUsed: metadata.context_used,
+    detected_language: lang
   };
 
-  return syncNarrativeWithDiagram(question, out);
+  // ── VALIDATION ─────────────────────────────────────────────────
+  if (!validateChemistryResponse(response)) {
+    console.warn("[Chemistry Response] Validation issues detected but returning partial response");
+  }
+
+  return response;
 }
 
 // ── Mathematics ────────────────────────────────────────────────────
