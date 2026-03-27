@@ -985,22 +985,35 @@ function buildChemistryReactionPathway(parsed, isConversion) {
 // ═════════════════════════════════════════════════════════════════════
 function buildChemistrySteps(parsed, isConversion) {
   if (!parsed || !Array.isArray(parsed.steps)) return [];
-  
-  return parsed.steps.map((step, idx) => ({
-    step_num: step.step_num || idx + 1,
-    title: step.title || `Step ${idx + 1}`,
-    subtitle: step.subtitle || "",
-    description: step.description || step.desc || "",
-    molecules: Array.isArray(step.molecules) ? step.molecules.map(m => ({
-      name: m.name || "",
-      role: m.role || "reactant",
-      smiles: m.smiles || "",
-      svg_type: m.svg_type || "custom_structure",
-      formula: m.formula || ""
-    })) : [],
-    conditions: step.conditions || "",
-    mechanism_type: step.mechanism_type || (isConversion ? "unknown" : "description_only")
-  })).slice(0, 4);
+
+  return parsed.steps.map((step, idx) => {
+    const hasProduct =
+      Array.isArray(step.molecules) &&
+      step.molecules.some(m => m.role === "product");
+
+    return {
+      step_num: step.step_num || idx + 1,
+      title: step.title || `Step ${idx + 1}`,
+      subtitle: step.subtitle || "",
+      description: step.description || step.desc || "",
+
+      ...(hasProduct
+        ? {
+            molecules: step.molecules.map(m => ({
+              name: m.name || "",
+              role: m.role || "reactant",
+              smiles: m.smiles || "",
+              svg_type: m.svg_type || "custom_structure",
+              formula: m.formula || ""
+            }))
+          }
+        : {}),
+
+      conditions: step.conditions || "",
+      mechanism_type:
+        step.mechanism_type || (isConversion ? "unknown" : "description_only")
+    };
+  }).slice(0, 4);
 }
 
 // ═════════════════════════════════════════════════════════════════════
