@@ -53,6 +53,21 @@ export const redis = new Redis(config.REDIS_URL, {
   maxRetriesPerRequest: null,
 });
 
+let hasLoggedRedisConnectionError = false;
+
+redis.on('error', (error) => {
+  if (!hasLoggedRedisConnectionError) {
+    hasLoggedRedisConnectionError = true;
+    console.warn('[Redis] Connection failed. Running with degraded features until Redis is reachable.', {
+      message: error.message,
+    });
+  }
+});
+
+redis.on('ready', () => {
+  hasLoggedRedisConnectionError = false;
+});
+
 export const logger = winston.createLogger({
   level: 'info',
   format: winston.format.json(),

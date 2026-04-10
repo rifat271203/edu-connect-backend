@@ -9,7 +9,8 @@ const { handlePhysicsQuestion } = require("./aiPhysics");
 const { smilesMap, aliasToCanonical, smilesToCanonical } = getChemistryMaps();
 
 const router = express.Router();
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const geminiApiKey = String(process.env.GEMINI_API_KEY || "").trim();
+const ai = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
 
 const qdrant = new QdrantClient({
   url: process.env.QDRANT_URL,
@@ -1281,11 +1282,23 @@ async function callLlmWithProviderFallback(input) {
 // EMBEDDING + QDRANT
 // ═══════════════════════════════════════════════════════════════════
 async function embedOne(text) {
+  if (!ai) {
+    throw new Error("GEMINI_API_KEY must be set for context retrieval");
+  }
   const res = await ai.models.embedContent({ model: "gemini-embedding-001", contents: text });
   return res.embeddings[0].values;
 }
 
 async function getContext(question, subject, category) {
+  if (!ai) {
+    console.log("[Qdrant] GEMINI_API_KEY not set; skipping context retrieval.");
+    return {
+      contextText: "",
+      contextChunks: [],
+      collectionName: resolveCollectionName(subject, category),
+    };
+  }
+
   const qvec           = await embedOne(question);
   const collectionName = resolveCollectionName(subject, category);
   const questionInfo   = detectQuestionType(question);

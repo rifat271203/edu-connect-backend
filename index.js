@@ -308,7 +308,31 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 3001
 
+function isTruthyEnv(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+}
+
+const allowWebRtcBootstrapFailure = isTruthyEnv(process.env.ALLOW_WEBRTC_BOOTSTRAP_FAILURE);
+
 async function mountWebRtcFeatures() {
+  const requiredEnv = [
+    'REDIS_URL',
+    'ALLOWED_ORIGINS',
+    'MEDIASOUP_LISTEN_IP',
+    'MEDIASOUP_ANNOUNCED_IP',
+    'TURN_URL',
+    'TURN_USERNAME',
+    'TURN_PASSWORD',
+    'OUTPUT_DIR',
+  ];
+
+  const missingEnv = requiredEnv.filter((key) => !String(process.env[key] || '').trim());
+
+  if (missingEnv.length > 0) {
+    console.log(`[WebRTC] Skipping bootstrap; missing env: ${missingEnv.join(', ')}`);
+    return;
+  }
+
   const [socketModule, workerModule, authModule, sessionModule] = await Promise.all([
     import('./src/socket/index.ts'),
     import('./src/sfu/worker.ts'),
@@ -386,7 +410,15 @@ async function mountWebRtcFeatures() {
 
 ;(async () => {
   try {
-    await mountWebRtcFeatures();
+    try {
+      await mountWebRtcFeatures();
+    } catch (error) {
+      if (allowWebRtcBootstrapFailure) {
+        console.warn('WEBRTC BOOTSTRAP FAILED: running API-only mode because ALLOW_WEBRTC_BOOTSTRAP_FAILURE is enabled.', error);
+      } else {
+        throw error;
+      }
+    }
 
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`)
