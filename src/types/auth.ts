@@ -7,5 +7,6 @@ export interface JwtUserPayload {
   role: UserRole;
   iat?: number;
   exp?: number;
+  iat2?: number;
 }
 
