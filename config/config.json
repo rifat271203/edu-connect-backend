@@ -1,0 +1,44 @@
+{
+  "development": {
+    "username": "2sCZku41iFMqPWu.root",
+    "password": "nRhbRdYTo4ogrfwm",
+    "database": "test",
+    "host": "gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+    "port": 4000,
+    "dialect": "mysql",
+    "dialectOptions": {
+      "ssl": {
+        "require": true,
+        "rejectUnauthorized": false
+      }
+    }
+  },
+  "test": {
+    "username": "2sCZku41iFMqPWu.root",
+    "password": "nRhbRdYTo4ogrfwm",
+    "database": "test",
+    "host": "gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+    "port": 4000,
+    "dialect": "mysql",
+    "dialectOptions": {
+      "ssl": {
+        "require": true,
+        "rejectUnauthorized": false
+      }
+    }
+  },
+  "production": {
+    "username": "2sCZku41iFMqPWu.root",
+    "password": "nRhbRdYTo4ogrfwm",
+    "database": "test",
+    "host": "gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+    "port": 4000,
+    "dialect": "mysql",
+    "dialectOptions": {
+      "ssl": {
+        "require": true,
+        "rejectUnauthorized": false
+      }
+    }
+  }
+}

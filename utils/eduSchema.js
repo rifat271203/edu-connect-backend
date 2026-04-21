@@ -23,6 +23,22 @@ function runQuery(sql, params = []) {
   });
 }
 
+async function ensureColumnExists(tableName, columnName, definitionSql) {
+  const columnRows = await runQuery(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [tableName, columnName]
+  );
+
+  if (!columnRows.length) {
+    await runQuery(`ALTER TABLE ${tableName} ADD COLUMN ${definitionSql}`);
+  }
+}
+
 let schemaInitPromise = null;
 
 async function ensureEduSchema() {
@@ -44,37 +60,10 @@ async function ensureEduSchema() {
       )
     `);
 
-    const profilePicColumnRows = await runQuery(
-      `SELECT COLUMN_NAME
-       FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE()
-         AND TABLE_NAME = 'edu_users'
-         AND COLUMN_NAME = 'profile_pic_url'
-       LIMIT 1`
-    );
-
-    if (!profilePicColumnRows.length) {
-      await runQuery(`
-        ALTER TABLE edu_users
-        ADD COLUMN profile_pic_url VARCHAR(500) DEFAULT NULL
-      `);
-    }
-
-    const profileVisibilityColumnRows = await runQuery(
-      `SELECT COLUMN_NAME
-       FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE()
-         AND TABLE_NAME = 'edu_users'
-         AND COLUMN_NAME = 'is_profile_public'
-       LIMIT 1`
-    );
-
-    if (!profileVisibilityColumnRows.length) {
-      await runQuery(`
-        ALTER TABLE edu_users
-        ADD COLUMN is_profile_public TINYINT(1) NOT NULL DEFAULT 1
-      `);
-    }
+    await ensureColumnExists('edu_users', 'department', 'department VARCHAR(120) DEFAULT NULL');
+    await ensureColumnExists('edu_users', 'institution', 'institution VARCHAR(160) DEFAULT NULL');
+    await ensureColumnExists('edu_users', 'profile_pic_url', 'profile_pic_url VARCHAR(500) DEFAULT NULL');
+    await ensureColumnExists('edu_users', 'is_profile_public', 'is_profile_public TINYINT(1) NOT NULL DEFAULT 1');
 
     await runQuery(`
       CREATE TABLE IF NOT EXISTS edu_posts (
@@ -227,6 +216,32 @@ async function ensureEduSchema() {
         INDEX idx_meeting_participants_active (room_id, left_at),
         CONSTRAINT fk_meeting_participants_room FOREIGN KEY (room_id) REFERENCES meetings(room_id) ON DELETE CASCADE,
         CONSTRAINT fk_meeting_participants_user FOREIGN KEY (user_id) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS edu_tuition_posts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        teacher_id INT NOT NULL,
+        subject VARCHAR(255) NOT NULL,
+        location VARCHAR(255) NOT NULL,
+        tuition_fee VARCHAR(100) NOT NULL,
+        details TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_tuition_teacher FOREIGN KEY (teacher_id) REFERENCES edu_users(id) ON DELETE CASCADE
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS edu_tuition_requests (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        post_id INT NOT NULL,
+        student_id INT NOT NULL,
+        status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_tuition_request (post_id, student_id),
+        CONSTRAINT fk_tuition_post FOREIGN KEY (post_id) REFERENCES edu_tuition_posts(id) ON DELETE CASCADE,
+        CONSTRAINT fk_tuition_student FOREIGN KEY (student_id) REFERENCES edu_users(id) ON DELETE CASCADE
       )
     `);
   })().catch((error) => {

@@ -72,6 +72,16 @@ function close() {
   });
 }
 
+// Test database connection
+pool.getConnection((err, connection) => {
+  if (err) {
+    console.error('Database connection test failed:', err);
+  } else {
+    console.log('Database connection test succeeded ✅');
+    connection.release();
+  }
+});
+
 module.exports = {
   query,
   ping,

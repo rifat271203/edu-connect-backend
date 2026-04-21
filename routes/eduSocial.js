@@ -1107,14 +1107,15 @@ router.get('/dm/conversations', async (req, res) => {
        FROM edu_dm_conversations c
        JOIN edu_users u
          ON u.id = CASE WHEN c.user1_id = ? THEN c.user2_id ELSE c.user1_id END
-       LEFT JOIN edu_dm_messages m
-         ON m.id = (
-           SELECT lm.id
-           FROM edu_dm_messages lm
-           WHERE lm.conversation_id = c.id
-           ORDER BY lm.created_at DESC, lm.id DESC
-           LIMIT 1
-         )
+       LEFT JOIN (
+         SELECT m1.*
+         FROM edu_dm_messages m1
+         INNER JOIN (
+           SELECT conversation_id, MAX(created_at) AS max_created_at
+           FROM edu_dm_messages
+           GROUP BY conversation_id
+         ) m2 ON m1.conversation_id = m2.conversation_id AND m1.created_at = m2.max_created_at
+       ) m ON m.conversation_id = c.id
        WHERE c.user1_id = ? OR c.user2_id = ?
        ORDER BY COALESCE(m.created_at, c.created_at) DESC
        LIMIT ? OFFSET ?`,
@@ -1123,6 +1124,7 @@ router.get('/dm/conversations', async (req, res) => {
 
     return res.json({ conversations, limit, offset });
   } catch (error) {
+    logSocialError('GET /dm/conversations', req, error);
     return res.status(500).json({ message: 'Failed to fetch DM conversations', error: error.message });
   }
 });

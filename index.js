@@ -96,6 +96,7 @@ const legacyAuthRateLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max:
 app.use('/api/ai', aiRateLimiter, require('./routes/ai'));
 app.use('/api/auth', authRateLimiter, require('./routes/eduAuth'));
 app.use('/api/social', require('./routes/eduSocial'));
+app.use('/api/tuition', require('./routes/eduTuition'));
 app.use('/api/feed', require('./routes/feed'));
 app.use('/api/meetings', require('./routes/meetings'));
 app.use('/api/classroom', require('./src/modules/eduConnectClassroom'));
