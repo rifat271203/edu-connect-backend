@@ -59,6 +59,42 @@ router.get('/posts', eduAuthMiddleware, async (req, res) => {
   }
 });
 
+// Student/Teacher: Get top 5 most popular teachers based on tuition requests
+router.get('/teachers/popular', eduAuthMiddleware, async (req, res) => {
+  try {
+    const teachers = await runQuery(`
+      SELECT
+        u.id,
+        u.name,
+        u.email,
+        u.department,
+        u.institution,
+        u.profile_pic_url,
+        COUNT(DISTINCT p.id) AS total_posts,
+        COUNT(r.id) AS total_requests,
+        SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END) AS approved_requests,
+        MAX(p.created_at) AS latest_post_at
+      FROM edu_users u
+      LEFT JOIN edu_tuition_posts p ON p.teacher_id = u.id
+      LEFT JOIN edu_tuition_requests r ON r.post_id = p.id
+      WHERE u.role = 'teacher'
+      GROUP BY u.id, u.name, u.email, u.department, u.institution, u.profile_pic_url
+      HAVING COUNT(DISTINCT p.id) > 0
+      ORDER BY total_requests DESC, approved_requests DESC, total_posts DESC, latest_post_at DESC
+      LIMIT 5
+    `);
+
+    res.status(200).json({
+      message: 'Top 5 popular teachers fetched successfully',
+      total: teachers.length,
+      teachers
+    });
+  } catch (error) {
+    console.error('Error fetching popular teachers:', error);
+    res.status(500).json({ message: 'Failed to fetch popular teachers' });
+  }
+});
+
 // Student: Connect with a tuition post
 router.post('/posts/:id/connect', eduAuthMiddleware, async (req, res) => {
   if (req.user.role !== 'student') {
