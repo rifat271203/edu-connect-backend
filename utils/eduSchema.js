@@ -65,6 +65,26 @@ async function ensureEduSchema() {
     await ensureColumnExists('edu_users', 'profile_pic_url', 'profile_pic_url VARCHAR(500) DEFAULT NULL');
     await ensureColumnExists('edu_users', 'is_profile_public', 'is_profile_public TINYINT(1) NOT NULL DEFAULT 1');
 
+    // Google OAuth support
+    await ensureColumnExists('edu_users', 'google_id', 'google_id VARCHAR(255) DEFAULT NULL');
+
+    // Make password nullable for Google-authenticated users (who have no password)
+    try {
+      const colInfo = await runQuery(
+        `SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'edu_users'
+           AND COLUMN_NAME = 'password'
+         LIMIT 1`,
+        []
+      );
+      if (colInfo.length && colInfo[0].IS_NULLABLE === 'NO') {
+        await runQuery('ALTER TABLE edu_users MODIFY COLUMN password VARCHAR(255) DEFAULT NULL');
+      }
+    } catch (_err) {
+      console.warn('SCHEMA: could not check/modify password nullable state:', _err.message);
+    }
+
     await runQuery(`
       CREATE TABLE IF NOT EXISTS edu_posts (
         id INT AUTO_INCREMENT PRIMARY KEY,
