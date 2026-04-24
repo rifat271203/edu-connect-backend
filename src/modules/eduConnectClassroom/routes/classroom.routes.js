@@ -587,5 +587,52 @@ router.get('/notifications/unread-count', requireAuth, controller.unreadNotifica
 router.patch('/notifications/:notificationId/read', requireAuth, controller.markNotificationRead);
 router.patch('/notifications/read-all', requireAuth, controller.markAllNotificationsRead);
 
+router.get(
+  '/courses/:courseId/live-room',
+  requireAuth,
+  resolveCourseAccess,
+  requireApprovedClassroomMember,
+  controller.getActiveLiveRoom
+);
+
+router.post(
+  '/courses/:courseId/live-room',
+  requireAuth,
+  resolveCourseAccess,
+  requireCourseManagementRole,
+  requireCourseActiveForMutation,
+  controller.activateLiveRoom
+);
+
+router.get(
+  '/courses/:courseId/materials',
+  requireAuth,
+  resolveCourseAccess,
+  requireApprovedClassroomMember,
+  controller.listMaterials
+);
+
+router.post(
+  '/courses/:courseId/materials',
+  requireAuth,
+  resolveCourseAccess,
+  requireCourseManagementRole,
+  requireCourseActiveForMutation,
+  controller.createMaterial
+);
+
+router.get(
+  '/courses/:courseId/materials/public',
+  controller.listPublicMaterials
+);
+
+router.get(
+  '/courses/:courseId/group-chat',
+  requireAuth,
+  resolveCourseAccess,
+  requireApprovedClassroomMember,
+  controller.getGroupChat
+);
+
 module.exports = router;
 

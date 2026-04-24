@@ -573,6 +573,24 @@ async function ensureClassroomSchema() {
         CONSTRAINT fk_classroom_session_attendance_marker FOREIGN KEY (marked_by) REFERENCES edu_users(id) ON DELETE CASCADE
       )
     `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS course_materials (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        course_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        type ENUM('notice', 'pdf', 'book', 'recording', 'document', 'video', 'link') NOT NULL,
+        url VARCHAR(600) NOT NULL,
+        thumbnail_url VARCHAR(600) DEFAULT NULL,
+        visibility ENUM('public', 'enrolled_only') NOT NULL DEFAULT 'enrolled_only',
+        duration INT DEFAULT NULL,
+        file_size BIGINT DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_course_materials_course_visibility (course_id, visibility),
+        CONSTRAINT fk_course_materials_course FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+      )
+    `);
   })().catch((error) => {
     classroomSchemaInitPromise = null;
     throw error;

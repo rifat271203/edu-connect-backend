@@ -1661,6 +1661,115 @@ async function listMyEnrollmentRequests({ studentId, page, limit, status }) {
     meta: buildPaginatedMeta(page, limit, totalRows[0]?.total || 0),
   };
 }
+async function getActiveLiveRoom(courseId) {
+  const rows = await runQuery(
+    `SELECT lcs.id, lcs.classroom_id, lcs.created_by, lcs.title, lcs.status, lcs.provider_room_id, lcs.started_at, c.id AS course_id
+     FROM live_class_sessions lcs
+     JOIN classrooms cl ON cl.id = lcs.classroom_id
+     JOIN courses c ON c.id = cl.course_id
+     WHERE c.id = ? AND lcs.status IN ('live', 'scheduled')
+     ORDER BY lcs.status ASC, lcs.created_at DESC
+     LIMIT 1`,
+    [courseId]
+  );
+  if (!rows.length) return null;
+  const room = rows[0];
+  return {
+    roomId: room.provider_room_id,
+    courseId: room.course_id,
+    status: room.status === 'live' ? 'live' : 'waiting',
+    participantCount: 0,
+    startedAt: room.started_at
+  };
+}
+
+async function activateLiveRoom(courseId, userId, title) {
+  const existing = await getActiveLiveRoom(courseId);
+  if (existing && existing.status === 'live') {
+    return existing;
+  }
+  
+  const clRows = await runQuery(`SELECT id FROM classrooms WHERE course_id = ? LIMIT 1`, [courseId]);
+  if (!clRows.length) throw new Error('Classroom not found');
+  const classroomId = clRows[0].id;
+  
+  const roomId = `room-${courseId}-${Date.now()}`;
+  await runQuery(
+    `INSERT INTO live_class_sessions (classroom_id, created_by, title, status, provider_room_id, started_at)
+     VALUES (?, ?, ?, 'live', ?, NOW())`,
+    [classroomId, userId, title || 'Live Class', roomId]
+  );
+  
+  return getActiveLiveRoom(courseId);
+}
+
+async function createCourseMaterial(courseId, { title, description, type, url, thumbnailUrl, visibility, duration, fileSize }) {
+  const insertResult = await runQuery(
+    `INSERT INTO course_materials (course_id, title, description, type, url, thumbnail_url, visibility, duration, file_size)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [courseId, title, description, type, url, thumbnailUrl || null, visibility || 'enrolled_only', duration || null, fileSize || null]
+  );
+  
+  const rows = await runQuery(`SELECT * FROM course_materials WHERE id = ?`, [insertResult.insertId]);
+  return rows[0];
+}
+
+async function listCourseMaterials(courseId, typeFilter) {
+  let query = `SELECT * FROM course_materials WHERE course_id = ?`;
+  const params = [courseId];
+  if (typeFilter) {
+    query += ` AND type = ?`;
+    params.push(typeFilter);
+  }
+  query += ` ORDER BY created_at DESC`;
+  const rows = await runQuery(query, params);
+  return rows;
+}
+
+async function listPublicMaterials(courseId) {
+  const rows = await runQuery(
+    `SELECT * FROM course_materials WHERE course_id = ? AND visibility = 'public' ORDER BY created_at DESC`,
+    [courseId]
+  );
+  return rows;
+}
+
+async function getCourseGroupChatInfo(courseId) {
+  const cRows = await runQuery(`SELECT title FROM courses WHERE id = ? LIMIT 1`, [courseId]);
+  if (!cRows.length) throw new Error('Course not found');
+  
+  const clRows = await runQuery(`SELECT id FROM classrooms WHERE course_id = ? LIMIT 1`, [courseId]);
+  let memberCount = 0;
+  if (clRows.length) {
+    const mRows = await runQuery(
+      `SELECT COUNT(*) as count FROM classroom_members WHERE classroom_id = ? AND is_active = 1 AND removed_at IS NULL`,
+      [clRows[0].id]
+    );
+    memberCount = mRows[0].count;
+  }
+  
+  const msgRows = await runQuery(
+    `SELECT content FROM classroom_room_messages WHERE course_id = ? ORDER BY created_at DESC LIMIT 1`,
+    [courseId]
+  );
+  
+  return {
+    id: \`course-\${courseId}\`,
+    courseId,
+    courseTitle: cRows[0].title,
+    memberCount,
+    lastMessageText: msgRows.length ? msgRows[0].content : null,
+    unreadCount: 0
+  };
+}
+
+async function getEnrollmentStatus(courseId, studentId) {
+  const rows = await runQuery(
+    `SELECT status FROM course_enrollment_requests WHERE course_id = ? AND student_id = ? ORDER BY requested_at DESC LIMIT 1`,
+    [courseId, studentId]
+  );
+  return rows.length ? rows[0] : null;
+}
 
 module.exports = {
   createCourse,
@@ -1721,5 +1830,12 @@ module.exports = {
   markNotificationRead,
   markAllNotificationsRead,
   listMyEnrollmentRequests,
+  getActiveLiveRoom,
+  activateLiveRoom,
+  createCourseMaterial,
+  listCourseMaterials,
+  listPublicMaterials,
+  getCourseGroupChatInfo,
+  getEnrollmentStatus,
 };
 

@@ -93,10 +93,39 @@ async function getCourse(req, res) {
     const course = await service.getCourseById(courseId);
 
     if (!course) {
-      return res.status(404).json({ message: 'Course not found' });
+      return res.status(404).json({ success: true, data: null });
     }
 
-    return res.json({ course });
+    let isEnrolled = false;
+    let enrollmentStatus = null;
+
+    const header = req.headers.authorization || '';
+    if (header.startsWith('Bearer ')) {
+      try {
+        const token = header.slice(7).trim();
+        const jwt = require('jsonwebtoken');
+        const { getJwtSecret } = require('../../../../utils/security');
+        const decoded = jwt.verify(token, getJwtSecret());
+        if (decoded && decoded.id) {
+          const enrollment = await service.getEnrollmentStatus(courseId, decoded.id);
+          if (enrollment) {
+            enrollmentStatus = enrollment.status;
+            if (enrollmentStatus === 'approved') isEnrolled = true;
+          }
+        }
+      } catch (e) {
+        console.warn('Silent auth fail in getCourse', e.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        course,
+        isEnrolled,
+        enrollmentStatus
+      }
+    });
   } catch (error) {
     return sendError(res, error, 'Failed to load course');
   }
@@ -1295,6 +1324,71 @@ async function markAllNotificationsRead(req, res) {
   }
 }
 
+async function getActiveLiveRoom(req, res) {
+    try {
+        const courseId = Number(req.params.courseId);
+        const room = await service.getActiveLiveRoom(courseId);
+        if (!room) {
+            return res.status(404).json({ success: true, data: null });
+        }
+        return res.json({ success: true, data: room });
+    } catch(error) {
+        return sendError(res, error, 'Failed to get live room');
+    }
+}
+
+async function activateLiveRoom(req, res) {
+    try {
+        const courseId = Number(req.params.courseId);
+        const title = req.body.title || 'Live Room';
+        const room = await service.activateLiveRoom(courseId, req.user.id, title);
+        return res.status(200).json({ success: true, data: room });
+    } catch(error) {
+        return sendError(res, error, 'Failed to activate live room');
+    }
+}
+
+async function listMaterials(req, res) {
+    try {
+        const courseId = Number(req.params.courseId);
+        const typeFilter = req.query.type;
+        const materials = await service.listCourseMaterials(courseId, typeFilter);
+        return res.json({ success: true, data: { materials } });
+    } catch(error) {
+        return sendError(res, error, 'Failed to list materials');
+    }
+}
+
+async function createMaterial(req, res) {
+    try {
+        const courseId = Number(req.params.courseId);
+        const material = await service.createCourseMaterial(courseId, req.body);
+        return res.status(201).json({ success: true, data: material });
+    } catch(error) {
+        return sendError(res, error, 'Failed to create material');
+    }
+}
+
+async function listPublicMaterials(req, res) {
+    try {
+        const courseId = Number(req.params.courseId);
+        const materials = await service.listPublicMaterials(courseId);
+        return res.json({ success: true, data: { materials } });
+    } catch(error) {
+        return sendError(res, error, 'Failed to list public materials');
+    }
+}
+
+async function getGroupChat(req, res) {
+    try {
+        const courseId = Number(req.params.courseId);
+        const groupChatInfo = await service.getCourseGroupChatInfo(courseId);
+        return res.json({ success: true, data: groupChatInfo });
+    } catch(error) {
+        return sendError(res, error, 'Failed to get group chat');
+    }
+}
+
 module.exports = {
   createCourse,
   listCourses,
@@ -1366,5 +1460,11 @@ module.exports = {
   unreadNotificationCount,
   markNotificationRead,
   markAllNotificationsRead,
+  getActiveLiveRoom,
+  activateLiveRoom,
+  listMaterials,
+  createMaterial,
+  listPublicMaterials,
+  getGroupChat,
 };
 

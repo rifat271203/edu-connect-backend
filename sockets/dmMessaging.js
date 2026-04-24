@@ -98,6 +98,36 @@ async function hydrateMessageById(messageId) {
   return rows[0] || null;
 }
 
+async function hydrateCourseMessageById(messageId) {
+  const rows = await runQuery(
+    `SELECT
+       m.id,
+       m.course_id,
+       m.sender_id,
+       m.content AS message_text,
+       m.created_at,
+       su.name AS sender_name,
+       su.profile_pic_url AS sender_profile_pic_url
+     FROM classroom_room_messages m
+     JOIN edu_users su ON su.id = m.sender_id
+     WHERE m.id = ?
+     LIMIT 1`,
+    [messageId]
+  );
+  return rows[0] || null;
+}
+
+async function isCourseMember(userId, courseId) {
+  const rows = await runQuery(
+    `SELECT cm.id FROM classroom_members cm
+     JOIN classrooms cl ON cl.id = cm.classroom_id
+     WHERE cl.course_id = ? AND cm.user_id = ? AND cm.is_active = 1 AND cm.removed_at IS NULL
+     LIMIT 1`,
+    [courseId, userId]
+  );
+  return rows.length > 0;
+}
+
 function registerDMMessaging(io) {
   io.on('connection', (socket) => {
     socket.on('dm-auth', async (payload = {}) => {
@@ -128,6 +158,32 @@ function registerDMMessaging(io) {
       }
     });
 
+    socket.on('dm-join-group', async (payload = {}) => {
+      try {
+        if (isRateLimited(socket.id, 'dm-join-group')) {
+          return emitSocketError(socket, 'dm-join-group', 'Rate limit exceeded');
+        }
+        const userId = Number(socket.data.dmUserId);
+        if (!userId) return emitSocketError(socket, 'dm-join-group', 'Socket is not authenticated');
+
+        const groupId = payload.groupId;
+        if (!groupId || !groupId.startsWith('course-')) {
+          return emitSocketError(socket, 'dm-join-group', 'Invalid groupId');
+        }
+
+        const courseId = Number(groupId.replace('course-', ''));
+        const isMember = await isCourseMember(userId, courseId);
+        if (!isMember) {
+          return emitSocketError(socket, 'dm-join-group', 'You are not a member of this course');
+        }
+
+        socket.join(groupId);
+        socket.emit('dm-joined-group', { groupId });
+      } catch (error) {
+        emitSocketError(socket, 'dm-join-group', 'Failed to join group');
+      }
+    });
+
     socket.on('dm-send', async (payload = {}) => {
       try {
         if (isRateLimited(socket.id, 'dm-send')) {
@@ -142,8 +198,27 @@ function registerDMMessaging(io) {
         const receiverId = Number(payload.receiverId);
         const messageText = (payload.messageText || '').toString().trim();
 
+        if (payload.groupId && payload.groupId.startsWith('course-')) {
+          if (!messageText) return emitSocketError(socket, 'dm-send', 'messageText is required');
+          const courseId = Number(payload.groupId.replace('course-', ''));
+          const isMember = await isCourseMember(senderId, courseId);
+          if (!isMember) return emitSocketError(socket, 'dm-send', 'You are not a member of this course');
+
+          const insertResult = await runQuery(
+            `INSERT INTO classroom_room_messages (course_id, sender_id, content) VALUES (?, ?, ?)`,
+            [courseId, senderId, messageText]
+          );
+
+          const dmMessage = await hydrateCourseMessageById(insertResult.insertId);
+          dmMessage.groupId = payload.groupId;
+          
+          io.to(payload.groupId).emit('group-message', { message: dmMessage, groupId: payload.groupId });
+          return;
+        }
+
+        const receiverId = Number(payload.receiverId);
         if (!receiverId) {
-          return emitSocketError(socket, 'dm-send', 'receiverId is required');
+          return emitSocketError(socket, 'dm-send', 'receiverId or groupId is required');
         }
 
         if (receiverId === senderId) {
