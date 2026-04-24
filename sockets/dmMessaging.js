@@ -216,7 +216,6 @@ function registerDMMessaging(io) {
           return;
         }
 
-        const receiverId = Number(payload.receiverId);
         if (!receiverId) {
           return emitSocketError(socket, 'dm-send', 'receiverId or groupId is required');
         }
