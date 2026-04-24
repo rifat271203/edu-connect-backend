@@ -1754,7 +1754,7 @@ async function getCourseGroupChatInfo(courseId) {
   );
   
   return {
-    id: \`course-\${courseId}\`,
+    id: `course-${courseId}`,
     courseId,
     courseTitle: cRows[0].title,
     memberCount,
