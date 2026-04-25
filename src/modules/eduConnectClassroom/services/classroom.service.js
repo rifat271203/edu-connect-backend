@@ -1683,11 +1683,20 @@ async function getActiveLiveRoom(courseId) {
   };
 }
 
+async function deactivateLiveRoom(courseId) {
+  await runQuery(
+    `UPDATE live_class_sessions lcs
+     JOIN classrooms cl ON cl.id = lcs.classroom_id
+     SET lcs.status = 'completed', lcs.ended_at = NOW()
+     WHERE cl.course_id = ? AND lcs.status IN ('live', 'scheduled')`,
+    [courseId]
+  );
+  return true;
+}
+
 async function activateLiveRoom(courseId, userId, title) {
-  const existing = await getActiveLiveRoom(courseId);
-  if (existing && existing.status === 'live') {
-    return existing;
-  }
+  // First deactivate any existing ones to avoid duplicates
+  await deactivateLiveRoom(courseId);
   
   const clRows = await runQuery(`SELECT id FROM classrooms WHERE course_id = ? LIMIT 1`, [courseId]);
   if (!clRows.length) throw new Error('Classroom not found');

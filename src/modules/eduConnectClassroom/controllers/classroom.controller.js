@@ -1403,6 +1403,25 @@ async function getGroupChat(req, res) {
     }
 }
 
+async function deactivateLiveRoom(req, res) {
+    try {
+        const courseId = Number(req.params.courseId);
+        await service.deactivateLiveRoom(courseId);
+
+        // Notify students via socket
+        const io = req.app.get('io');
+        if (io) {
+            io.to(String(courseId)).emit('live_class_ended', {
+                courseId
+            });
+        }
+
+        return res.status(200).json({ success: true, message: 'Live room deactivated' });
+    } catch(error) {
+        return sendError(res, error, 'Failed to deactivate live room');
+    }
+}
+
 module.exports = {
   createCourse,
   listCourses,
@@ -1480,5 +1499,6 @@ module.exports = {
   createMaterial,
   listPublicMaterials,
   getGroupChat,
+  deactivateLiveRoom,
 };
 

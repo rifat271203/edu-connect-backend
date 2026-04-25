@@ -604,6 +604,14 @@ router.post(
   controller.activateLiveRoom
 );
 
+router.delete(
+  '/courses/:courseId/live-room',
+  requireAuth,
+  resolveCourseAccess,
+  requireCourseManagementRole,
+  controller.deactivateLiveRoom
+);
+
 router.get(
   '/courses/:courseId/materials',
   requireAuth,
