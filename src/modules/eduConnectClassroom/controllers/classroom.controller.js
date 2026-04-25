@@ -1342,6 +1342,20 @@ async function activateLiveRoom(req, res) {
         const courseId = Number(req.params.courseId);
         const title = req.body.title || 'Live Room';
         const room = await service.activateLiveRoom(courseId, req.user.id, title);
+
+        // Notify students via socket
+        const io = req.app.get('io');
+        if (io) {
+            const course = await service.getCourseById(courseId);
+            io.to(String(courseId)).emit('live_class_started', {
+                courseId,
+                courseTitle: course?.title || 'Live Class',
+                roomId: room.roomId,
+                teacherName: req.user.name || 'Instructor',
+                startedAt: room.startedAt
+            });
+        }
+
         return res.status(200).json({ success: true, data: room });
     } catch(error) {
         return sendError(res, error, 'Failed to activate live room');

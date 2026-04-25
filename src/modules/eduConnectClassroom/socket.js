@@ -71,7 +71,38 @@ function emitSocketError(socket, event, message) {
 }
 
 function registerClassroomSocket(io) {
-  io.on('connection', (socket) => {
+  io.on('connection', async (socket) => {
+    // Initial setup for global notifications
+    const user = decodeUser({}, socket);
+    if (user) {
+      const userId = Number(user.id);
+      socket.data.classroomUserId = userId;
+      socket.data.classroomUserName = user.name || null;
+      
+      // Join personal room
+      socket.join(`user-${userId}`);
+
+      try {
+        // Join all enrolled course rooms automatically
+        const enrollments = await runQuery(
+          `SELECT cl.course_id 
+           FROM classroom_members cm 
+           JOIN classrooms cl ON cl.id = cm.classroom_id 
+           WHERE cm.user_id = ? AND cm.is_active = 1 AND cm.removed_at IS NULL`,
+          [userId]
+        );
+        
+        socket.data.classroomCourses = new Set();
+        enrollments.forEach(e => {
+          const room = String(e.course_id);
+          socket.join(room);
+          socket.data.classroomCourses.add(room);
+        });
+      } catch (err) {
+        console.error('[Socket] Failed to auto-join rooms:', err);
+      }
+    }
+
     socket.on('join_classroom', async (payload = {}) => {
       try {
         await ensureClassroomSchema();
