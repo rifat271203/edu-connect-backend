@@ -1687,7 +1687,7 @@ async function deactivateLiveRoom(courseId) {
   await runQuery(
     `UPDATE live_class_sessions lcs
      JOIN classrooms cl ON cl.id = lcs.classroom_id
-     SET lcs.status = 'completed', lcs.ended_at = NOW()
+     SET lcs.status = 'ended', lcs.ended_at = NOW()
      WHERE cl.course_id = ? AND lcs.status IN ('live', 'scheduled')`,
     [courseId]
   );
