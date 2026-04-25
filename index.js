@@ -101,6 +101,7 @@ app.use('/api/tuition', require('./routes/eduTuition'));
 app.use('/api/feed', require('./routes/feed'));
 app.use('/api/meetings', require('./routes/meetings'));
 app.use('/api/classroom', require('./src/modules/eduConnectClassroom'));
+app.use('/api/stream', require('./routes/stream'));
 
 app.get('/', (req, res) => {
   res.status(200).json({ ok: true, message: 'Backend running' })
