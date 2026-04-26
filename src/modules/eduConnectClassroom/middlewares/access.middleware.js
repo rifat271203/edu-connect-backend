@@ -47,7 +47,7 @@ async function resolveCourseAccess(req, res, next) {
             AND cm.removed_at IS NULL
         ) THEN 1 ELSE 0 END AS is_member
       FROM courses c
-      JOIN classrooms cl ON cl.course_id = c.id
+      LEFT JOIN classrooms cl ON cl.course_id = c.id
       WHERE c.id = ?
       LIMIT 1`,
       [req.user?.id || 0, req.user?.id || 0, req.user?.id || 0, courseId]
@@ -58,6 +58,12 @@ async function resolveCourseAccess(req, res, next) {
     }
 
     const row = rows[0];
+    if (!row.classroom_id) {
+       // Auto-create classroom if missing to avoid 404s for new modules
+       const [newCl] = await runQuery(`INSERT INTO classrooms (course_id) VALUES (?)`, [courseId]);
+       row.classroom_id = newCl.insertId;
+    }
+
     req.courseAccess = {
       courseId: Number(row.id),
       classroomId: Number(row.classroom_id),
