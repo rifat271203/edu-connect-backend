@@ -1528,13 +1528,18 @@ router.get('/search', async (req, res) => {
     const wildcard = `%${q}%`;
 
     const users = await runQuery(
-      `SELECT id, name, email, role, department, institution, profile_pic_url, created_at
-       FROM edu_users
-       WHERE (name LIKE ? OR email LIKE ? OR department LIKE ? OR institution LIKE ?)
-         AND (? = '' OR role = ?)
-       ORDER BY role ASC, name ASC
+      `SELECT
+         u.id, u.name, u.email, u.role, u.department, u.institution, u.profile_pic_url, u.created_at,
+         EXISTS(SELECT 1 FROM edu_friendships f WHERE (f.user1_id = ? AND f.user2_id = u.id) OR (f.user1_id = u.id AND f.user2_id = ?)) AS is_friend,
+         (SELECT status FROM edu_friend_requests fr WHERE fr.sender_id = ? AND fr.receiver_id = u.id AND fr.status = 'pending' LIMIT 1) AS pending_sent,
+         (SELECT status FROM edu_friend_requests fr WHERE fr.sender_id = u.id AND fr.receiver_id = ? AND fr.status = 'pending' LIMIT 1) AS pending_received,
+         (SELECT id FROM edu_friend_requests fr WHERE ((fr.sender_id = ? AND fr.receiver_id = u.id) OR (fr.sender_id = u.id AND fr.receiver_id = ?)) AND fr.status = 'pending' ORDER BY fr.id DESC LIMIT 1) AS request_id
+       FROM edu_users u
+       WHERE (u.name LIKE ? OR u.email LIKE ? OR u.department LIKE ? OR u.institution LIKE ?)
+         AND (? = '' OR u.role = ?)
+       ORDER BY u.role ASC, u.name ASC
        LIMIT ?`,
-      [wildcard, wildcard, wildcard, wildcard, role, role, limit]
+      [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id, req.user.id, wildcard, wildcard, wildcard, wildcard, role, role, limit]
     );
 
     const posts = await runQuery(
