@@ -1841,6 +1841,7 @@ module.exports = {
   listMyEnrollmentRequests,
   getActiveLiveRoom,
   activateLiveRoom,
+  deactivateLiveRoom,
   createCourseMaterial,
   listCourseMaterials,
   listPublicMaterials,
